@@ -1,2 +1,0 @@
-# Admin
-Customer_admin
