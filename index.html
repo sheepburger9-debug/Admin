@@ -411,6 +411,10 @@ input,select,textarea{accent-color:var(--pri)}
  *,*::before,*::after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
 }
 
+
+  /* إبراز مركز الحذف للمالك والمدير وعدم دفنه وسط عناصر القائمة */
+  #nav button.nav-delete-center{background:rgba(190,45,45,.10);color:#b42318;border:1px solid rgba(190,45,45,.28);font-weight:900;margin:5px 0 10px}
+  #nav button.nav-delete-center.on{background:#b42318;color:#fff;border-color:#b42318}
 </style>
 
 
@@ -556,6 +560,7 @@ const OM = ['owner','manager'];
 const ROLES = { owner:'المالك', manager:'المدير', cashier:'الكاشير', chef:'الشيف', dispatcher:'منسق التوصيل' };
 const NAV = [
   ['dashboard','🏠','الرئيسية',ALL],
+  ['delete-center','🗑️','مركز الحذف',OM],
   ['orders','📋','الطلبات',ALL],
   ['menu','🍽️','قائمة الطعام',[...OM,'chef']],
   ['addon-groups','🧩','مجموعات الإضافات',OM],
@@ -565,7 +570,6 @@ const NAV = [
   ['app-content','📝','محتوى التطبيق',OM],
   ['branch-pricing','💲','أسعار الفروع',OM],
   ['reward-prizes','🎡','جوائز العجلة',OM],
-  ['delete-center','🗑️','مركز الحذف',OM],
   ['offers','🎁','العروض والخصومات',OM],
   ['home-controls','🎯','الواجهة الرئيسية والمنيو السري',OM],
   ['homepage','🧱','البلوكات والبنرات والإعلانات',OM],
@@ -1164,7 +1168,7 @@ async function enter(user) {
     $('shell').classList.remove('hidden');
     $('who').textContent = `${ME.name} — ${ROLES[ME.role]}`;
     $('nav').innerHTML = NAV.filter(n => can(n[3]))
-      .map(n => `<button data-p="${n[0]}">${n[1]} ${n[2]}<b class="hide" data-badge></b></button>`).join('');
+      .map(n => `<button data-p="${n[0]}" class="${n[0] === 'delete-center' ? 'nav-delete-center' : ''}">${n[1]} ${n[2]}<b class="hide" data-badge></b></button>`).join('');
 
     await Promise.all([loadDrivers(), loadSettings(), loadOrders(), loadCancelReasons(), loadLoyalty()]);
     startRealtime();
@@ -2116,10 +2120,8 @@ VIEWS.menu = async v => {
       const { data: m } = await sb.from('menu_items').select('*').eq('id', id).maybeSingle();
       if (m) openMenuForm(m);
     } else if (b.dataset.a === 'del') {
-      if (!await ask('حذف', `حذف "${card.querySelector('b').textContent}"؟ لا يمكن التراجع.`, 'حذف')) return;
-      const { error } = await sb.from('menu_items').update({is_available:false}).eq('id', id);
-      if (error) return fail(error);
-      toast('تم إيقاف الصنف بدل حذفه لحماية الطلبات القديمة', 'ok'); go('menu');
+      dcCurrent = 'products';
+      go('delete-center');
     }
   };
   if ($('addm')) $('addm').onclick = () => openMenuForm(null);
@@ -2338,12 +2340,9 @@ async function renderCategoriesPanel(v) {
       const id = b.closest('tr').dataset.id;
       openCategoryForm(data.find(c => c.id === id));
     });
-    v.querySelectorAll('[data-a="del"]').forEach(b => b.onclick = async () => {
-      const id = b.closest('tr').dataset.id;
-      if (!await ask('تعطيل', 'تعطيل التصنيف؟ سيبقى محفوظًا لحماية الأصناف والطلبات القديمة.', 'تعطيل')) return;
-      const { error } = await sb.from('categories').update({is_active:false}).eq('id', id);
-      if (error) return fail(error);
-      toast('تم تعطيل التصنيف بدل حذفه', 'ok'); go('menu');
+    v.querySelectorAll('[data-a="del"]').forEach(b => b.onclick = () => {
+      dcCurrent = 'categories';
+      go('delete-center');
     });
   }
 }
@@ -2421,12 +2420,9 @@ VIEWS.addons = async v => {
   if (edit) {
     $('adda').onclick = () => openAddonForm(null);
     v.querySelectorAll('[data-a="ed"]').forEach(b => b.onclick = () => openAddonForm(data.find(x => x.id === b.closest('tr').dataset.id)));
-    v.querySelectorAll('[data-a="del"]').forEach(b => b.onclick = async () => {
-      const id = b.closest('tr').dataset.id;
-      if (!await ask('تعطيل', 'تعطيل الإضافة؟ ستبقى محفوظة للطلبات القديمة.', 'تعطيل')) return;
-      const { error } = await sb.from('addons').update({is_available:false}).eq('id', id);
-      if (error) return fail(error);
-      toast('تم تعطيل الإضافة بدل حذفها', 'ok'); go('menu');
+    v.querySelectorAll('[data-a="del"]').forEach(b => b.onclick = () => {
+      dcCurrent = 'addons';
+      go('delete-center');
     });
   }
 };
@@ -3919,11 +3915,11 @@ VIEWS['reward-prizes'] = async v => {
    بعد الحذف نعيد قراءة الصف، ولا نعتبر الحذف ناجحًا إلا إذا اختفى فعلًا.
    ═══════════════════════════════════════════════════ */
 async function dcCount(table, filters) {
-  let q = sb.from(table).select('id');
+  let q = sb.from(table).select('*', { count: 'exact', head: true });
   for (const [k, v] of Object.entries(filters)) q = q.eq(k, v);
   const r = await q;
   if (r.error) throw r.error;
-  return (r.data || []).length;
+  return Number.isFinite(r.count) ? r.count : (r.data || []).length;
 }
 /* فحص يُرجع قائمة شروط. أي خطأ في فحص يُظهر كشرط مانع. */
 async function dcSafe(label, table, filters, block, note) {
@@ -3968,8 +3964,15 @@ const DC_ENTITIES = {
       dcSafe('أحجام المنتج', 'item_sizes', { item_id: id }, false, 'تُحذف مع المنتج'),
       dcSafe('إضافات مرتبطة بالمنتج', 'item_addons', { item_id: id }, false, 'تُفصل تلقائيًا'),
       dcSafe('مجموعات إضافات', 'addon_groups', { item_id: id }, false, 'تُحذف مع المنتج'),
-      dcSafe('شارات المنتج', 'menu_item_badges', { item_id: id }, false, 'تُفصل تلقائيًا')
+      dcSafe('شارات المنتج', 'menu_item_badges', { item_id: id }, false, 'ارتباط تعريفي بالمنتج'),
+      dcSafe('بنود الطلبات السابقة', 'order_items', { item_id: id }, true, 'لا يُحذف منتج دخل في طلب سابق حتى لا تتضرر تفاصيل الطلب وسجلاته.'),
+      dcSafe('عناصر سلال العملاء', 'customer_cart_items', { item_id: id }, true, 'أزل المنتج من السلال النشطة أولًا أو أوقفه مؤقتًا.')
     ]) },
+  subcategories: { label: 'التصنيفات الفرعية', table: 'subcategories', cols: 'id,name_ar,category_id,is_active', name: r => r.name_ar,
+    checks: id => Promise.all([
+      dcSafe('منتجات مرتبطة بالتصنيف الفرعي', 'menu_items', { subcategory_id: id }, true, 'انقل المنتجات إلى تصنيف فرعي آخر أو أزل الربط قبل حذف التصنيف.')
+    ]) },
+  blockItems: { label: 'عناصر بلوكات الصفحة الرئيسية', table: 'homepage_block_items', cols: 'id,item_type,title_override_ar,block_id', name: r => r.title_override_ar || r.item_type || 'عنصر بلوك', checks: async () => [] },
   addons: { label: 'الإضافات', table: 'addons', cols: 'id,name_ar,is_available', name: r => r.name_ar,
     checks: id => Promise.all([
       dcSafe('منتجات تستخدم الإضافة', 'item_addons', { addon_id: id }, false, 'تُفصل تلقائيًا'),
@@ -4007,8 +4010,32 @@ const DC_ENTITIES = {
   recommendations: { label: 'توصيات المنتجات', table: 'product_recommendation_placements', cols: 'id,item_type,placement_key', name: r => `${r.item_type} · ${r.placement_key}`, checks: async () => [] },
   addonGroups: { label: 'مجموعات الإضافات', table: 'addon_groups', cols: 'id,name_ar,item_id', name: r => r.name_ar,
     checks: id => Promise.all([
-      dcSafe('خيارات في المجموعة', 'addon_group_options', { group_id: id }, false, 'تُحذف تلقائيًا')
-    ]) }
+      dcSafe('خيارات في المجموعة', 'addon_group_options', { group_id: id }, false, 'تحذفها قاعدة البيانات تلقائيًا عند حذف المجموعة')
+    ]) },
+  achievements: { label: 'إنجازات العملاء', table: 'achievements', cols: 'id,name_ar,achievement_key,is_active', name: r => r.name_ar || r.achievement_key,
+    checks: (id, row) => Promise.all([
+      dcSafe('إنجازات حصل عليها العملاء', 'user_achievements', { achievement_key: row.achievement_key }, true, 'يوجد سجل إنجازات للعملاء؛ احتفظ بالسجل أو عطّل الإنجاز بدل حذفه.')
+    ]) },
+  rewardPrizes: { label: 'جوائز الولاء', table: 'reward_prizes', cols: 'id,label_ar,is_active', name: r => r.label_ar || 'جائزة بدون اسم',
+    checks: id => Promise.all([
+      dcSafe('مطالبات العملاء بالجائزة', 'reward_claims', { prize_id: id }, true, 'الجائزة مرتبطة بمطالبات عملاء؛ لا تحذف سجلًا استُخدم بالفعل.')
+    ]) },
+  secretCodes: { label: 'أكواد المنيو السري', table: 'secret_menu_codes', cols: 'id,label,is_active,uses_count,max_uses', name: r => r.label || 'كود منيو سري',
+    checks: id => Promise.all([
+      dcSafe('المنتجات المحددة للكود', 'secret_menu_code_items', { code_id: id }, false, 'تحذف روابط المنتجات مع الكود'),
+      dcSafe('عمليات إصدار مكافآت مرتبطة', 'secret_menu_reward_issuances', { code_id: id }, true, 'يوجد سجل إصدار مكافآت؛ لا تحذف الكود حتى لا تفقد سجل العملاء.')
+    ]) },
+  customerRestrictions: { label: 'قيود وحظر العملاء', table: 'customer_restrictions', cols: 'id,customer_phone,reason,is_blocked', name: r => `${r.customer_phone || 'عميل'} · ${r.reason || (r.is_blocked ? 'محظور' : 'قيد')}`, checks: async () => [] },
+  adminNotifications: { label: 'إشعارات الإدارة', table: 'admin_notifications', cols: 'id,title,body,created_at', name: r => r.title || r.body || 'إشعار إداري', checks: async () => [] },
+  branchMenuItems: { label: 'توفر المنتجات بالفروع', table: 'branch_menu_items', cols: 'branch_id,item_id,is_available', keyColumns: ['branch_id','item_id'], name: r => `منتج ${String(r.item_id).slice(0,8)} · فرع ${String(r.branch_id).slice(0,8)}`, checks: async () => [] },
+  branchItemSizes: { label: 'أسعار الأحجام بالفروع', table: 'branch_item_sizes', cols: 'branch_id,size_id,price,is_available', keyColumns: ['branch_id','size_id'], name: r => `حجم ${String(r.size_id).slice(0,8)} · فرع ${String(r.branch_id).slice(0,8)}`, checks: async () => [] },
+  branchAddons: { label: 'أسعار الإضافات بالفروع', table: 'branch_addons', cols: 'branch_id,addon_id,price,is_available', keyColumns: ['branch_id','addon_id'], name: r => `إضافة ${String(r.addon_id).slice(0,8)} · فرع ${String(r.branch_id).slice(0,8)}`, checks: async () => [] },
+  itemAddons: { label: 'ربط الإضافات بالمنتجات', table: 'item_addons', cols: 'item_id,addon_id', keyColumns: ['item_id','addon_id'], name: r => `منتج ${String(r.item_id).slice(0,8)} · إضافة ${String(r.addon_id).slice(0,8)}`, checks: async () => [] },
+  categoryBadges: { label: 'ربط الشارات بالتصنيفات', table: 'category_badges', cols: 'badge_id,category_id', keyColumns: ['badge_id','category_id'], name: r => `شارة ${String(r.badge_id).slice(0,8)} · تصنيف ${String(r.category_id).slice(0,8)}`, checks: async () => [] },
+  productBadges: { label: 'ربط الشارات بالمنتجات', table: 'menu_item_badges', cols: 'badge_id,item_id', keyColumns: ['badge_id','item_id'], name: r => `شارة ${String(r.badge_id).slice(0,8)} · منتج ${String(r.item_id).slice(0,8)}`, checks: async () => [] },
+  promotionBadges: { label: 'ربط الشارات بالعروض', table: 'promotion_badges', cols: 'badge_id,promotion_id', keyColumns: ['badge_id','promotion_id'], name: r => `شارة ${String(r.badge_id).slice(0,8)} · عرض ${String(r.promotion_id).slice(0,8)}`, checks: async () => [] },
+  promotionItems: { label: 'المنتجات داخل العروض', table: 'menu_promotion_items', cols: 'promotion_id,item_id', keyColumns: ['promotion_id','item_id'], name: r => `عرض ${String(r.promotion_id).slice(0,8)} · منتج ${String(r.item_id).slice(0,8)}`, checks: async () => [] },
+  addonGroupOptions: { label: 'خيارات مجموعات الإضافات', table: 'addon_group_options', cols: 'id,group_id,item_id,addon_id,is_active', name: r => `خيار إضافة ${String(r.addon_id).slice(0,8)}`, checks: async () => [] }
 };
 
 let dcCurrent = 'offers';
@@ -4031,8 +4058,8 @@ VIEWS['delete-center'] = async v => {
     ${r.error ? `<div class="empty">تعذر تحميل السجلات: ${esc(hpErrMsg(r.error))}</div>` : `
     <div class="table-wrap">${(r.data || []).length === 0 ? '<div class="empty">لا توجد سجلات</div>' : (r.data || []).map(row => `
       <div class="set-card" style="margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
-        <div dir="auto"><b>${esc(ent.name(row))}</b> <small dir="ltr" style="color:var(--ink2)">${esc(String(row.id).slice(0, 8))}</small></div>
-        <button class="btn out sm dng" data-dc="open" data-id="${row.id}">🗑️ حذف نهائي</button>
+        <div dir="auto"><b>${esc(ent.name(row))}</b> <small dir="ltr" style="color:var(--ink2)">${esc((ent.keyColumns || ['id']).map(k => String(row[k]).slice(0, 8)).join(' · '))}</small></div>
+        <button class="btn out sm dng" data-dc="open" ${ (ent.keyColumns || ['id']).map(k => `data-${k.replace(/[A-Z]/g, m => '-' + m.toLowerCase())}="${esc(row[k])}"`).join(' ') }>🗑️ حذف نهائي</button>
       </div>`).join('')}</div>`}`;
 
   $('dc_sel').onchange = e => { dcCurrent = e.target.value; VIEWS['delete-center'](v); };
@@ -4042,15 +4069,61 @@ VIEWS['delete-center'] = async v => {
   };
   v.onclick = async e => {
     const b = e.target.closest('[data-dc="open"]'); if (!b) return;
-    const row = (r.data || []).find(x => x.id === b.dataset.id);
-    dcOpenConfirm(ent, row, v);
+    const row = (r.data || []).find(x => (ent.keyColumns || ['id']).every(k => { const dataKey = k.replace(/[A-Z]/g, m => '-' + m.toLowerCase()).replace(/-([a-z])/g, (_, c) => c.toUpperCase()); return String(x[k]) === String(b.dataset[dataKey]); }));
+    if (row) dcOpenConfirm(ent, row, v, dcCurrent);
   };
 };
 
-async function dcOpenConfirm(ent, row, v) {
+async function dcCleanupRelations(entityKey, row) {
+  const jobs = {
+    offers: [
+      ['menu_promotion_items',{promotion_id:row.id}], ['promotion_badges',{promotion_id:row.id}],
+      ['promotion_display_placements',{promotion_id:row.id}]
+    ],
+    badges: [
+      ['menu_item_badges',{badge_id:row.id}], ['category_badges',{badge_id:row.id}], ['promotion_badges',{badge_id:row.id}]
+    ],
+    pages: [],
+    categories: [['category_badges',{category_id:row.id}]],
+    products: [
+      ['item_sizes',{item_id:row.id}], ['item_addons',{item_id:row.id}],
+      ['menu_item_badges',{item_id:row.id}], ['addon_groups',{item_id:row.id}]
+    ],
+    addons: [['item_addons',{addon_id:row.id}], ['branch_addons',{addon_id:row.id}]],
+    sizes: [['branch_item_sizes',{size_id:row.id}]],
+    branches: [
+      ['branch_menu_items',{branch_id:row.id}], ['branch_item_sizes',{branch_id:row.id}], ['branch_addons',{branch_id:row.id}]
+    ],
+    blocks: [['homepage_block_items',{block_id:row.id}], ['promotion_display_placements',{block_id:row.id}]],
+    addonGroups: [['addon_group_options',{group_id:row.id}]],
+    secretCodes: [['secret_menu_code_items',{code_id:row.id}]]
+  }[entityKey] || [];
+  for (const [table, filters] of jobs) {
+    let q = sb.from(table).delete();
+    for (const [k,val] of Object.entries(filters)) q = q.eq(k,val);
+    const result = await q;
+    if (result.error) throw new Error(`تعذر تنظيف الارتباطات من ${table}: ${hpErrMsg(result.error)}`);
+  }
+  // هذه سجلات محتوى مستقلة؛ نفصل مرجع العرض بدل حذف البنر أو الإعلان نفسه.
+  if (entityKey === 'offers') {
+    for (const table of ['homepage_banners','homepage_announcements']) {
+      const result = await sb.from(table).update({promotion_id:null}).eq('promotion_id',row.id);
+      if (result.error) throw new Error(`تعذر فصل العرض عن ${table}: ${hpErrMsg(result.error)}`);
+    }
+    const result = await sb.from('menu_promotions').update({promotion_page_id:null}).eq('id',row.id);
+    // تجاهل فقط خطأ العمود غير الموجود؛ أما أخطاء الصلاحيات/الاتصال فتوقف العملية.
+    if (result.error && !/column .*promotion_page_id.* does not exist/i.test(result.error.message||'')) throw result.error;
+  }
+  if (entityKey === 'pages') {
+    const result = await sb.from('menu_promotions').update({promotion_page_id:null}).eq('promotion_page_id',row.id);
+    if (result.error) throw result.error;
+  }
+}
+
+async function dcOpenConfirm(ent, row, v, entityKey = dcCurrent) {
   openModal(`<h2>حذف نهائي <button class="close" onclick="closeModal()" aria-label="إغلاق">✕</button></h2><div class="empty" style="padding:12px">⏳ جاري فحص الارتباطات...</div>`);
   let checks;
-  try { checks = await ent.checks(row.id); }
+  try { checks = await ent.checks(row.id, row); }
   catch (e) { openModal(`<h2>تعذر الفحص</h2><div class="empty">${esc(hpErrMsg(e))}</div><div class="row" style="margin-top:12px"><button class="btn out big" onclick="closeModal()">إغلاق</button></div>`); return; }
   const blockers = checks.filter(c => c.block && c.n > 0);
   const infos = checks.filter(c => !c.block && c.n > 0);
@@ -4059,8 +4132,9 @@ async function dcOpenConfirm(ent, row, v) {
       <b style="color:${c.error ? 'var(--err)' : c.n > 0 ? (c.block ? 'var(--err)' : 'var(--warn)') : 'var(--ok)'}">${c.error ? 'تعذر التحقق' : c.n}</b></div>`).join('');
 
   const canDelete = blockers.length === 0;
+  const rowFilters = Object.fromEntries((ent.keyColumns || ['id']).map(k => [k, row[k]]));
   openModal(`<h2>حذف «${esc(ent.name(row))}» نهائيًا <button class="close" onclick="closeModal()" aria-label="إغلاق">✕</button></h2>
-    <p style="font-size:13px;color:var(--ink2)">الحذف نهائي. الارتباطات الموضحة تُعالج تلقائيًا كما هو مكتوب أمام كل بند.</p>
+    <p style="font-size:13px;color:var(--ink2)">الحذف نهائي. سيجري حذف روابط الإعدادات التابعة المعروفة أولًا، مع الحفاظ على سجلات الطلبات والاستخدامات التاريخية.</p>
     ${lines || '<div class="empty" style="padding:8px">لا توجد ارتباطات</div>'}
     ${canDelete ? '' : `<div class="empty" style="margin-top:12px;border:1px solid var(--err);border-radius:10px;padding:12px;color:var(--err)">
       لا يمكن حذف هذا السجل لوجود ${blockers.length} مانع. ${blockers.map(b => esc(b.note || b.label)).join(' · ')}</div>`}
@@ -4073,10 +4147,15 @@ async function dcOpenConfirm(ent, row, v) {
   $('dc_go').onclick = async () => {
     const btn = $('dc_go'); btn.disabled = true; btn.textContent = '⏳ جاري الحذف...';
     try {
-      const del = await sb.from(ent.table).delete().eq('id', row.id).select('id');
+      await dcCleanupRelations(entityKey, row);
+      let delQuery = sb.from(ent.table).delete();
+      for (const [k, value] of Object.entries(rowFilters)) delQuery = delQuery.eq(k, value);
+      const del = await delQuery.select('*');
       if (del.error) throw del.error;
       if (!del.data || del.data.length === 0) throw new Error('لم يتم الحذف: ليست لديك صلاحية أو السجل غير موجود');
-      const again = await sb.from(ent.table).select('id').eq('id', row.id);
+      let againQuery = sb.from(ent.table).select('*');
+      for (const [k, value] of Object.entries(rowFilters)) againQuery = againQuery.eq(k, value);
+      const again = await againQuery;
       if (again.error) throw again.error;
       if ((again.data || []).length > 0) throw new Error('الحذف لم يُؤكَّد: السجل ما زال موجودًا عند إعادة القراءة');
       closeModal();
