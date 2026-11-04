@@ -3993,7 +3993,7 @@ async function dcCount(table, filters) {
 /* فحص يُرجع قائمة شروط. أي خطأ في فحص يُظهر كشرط مانع. */
 async function dcSafe(label, table, filters, block, note) {
   try { return { label, n: await dcCount(table, filters), block, note }; }
-  catch (e) { return { label, n: 1, block: true, error: true, note: 'تعذر التحقق من هذا الارتباط، لذلك الحذف متوقف: ' + hpErrMsg(e) }; }
+  catch (e) { return { label, n: 1, block: true, error: true, note: 'تعذر التحقق من هذا الارتباط، لذلك الحذف متوقف: ' + (e?.message || e?.details || hpErrMsg(e)) }; }
 }
 
 const DC_ENTITIES = {
@@ -4017,7 +4017,7 @@ const DC_ENTITIES = {
     ]) },
   coupons: { label: 'الكوبونات', table: 'coupons', cols: 'id,code,is_active', name: r => r.code,
     checks: id => Promise.all([
-      dcSafe('مرات الاستخدام المسجلة', 'coupon_redemptions', { coupon_id: id }, true, 'الكوبون استُخدم، وحذفه يمحو سجل الاستخدام المالي. عطّله بدل الحذف.')
+      dcSafe('مرات الاستخدام المسجلة', 'coupon_redemptions', { coupon_id: id }, false, 'تُمسح سجلات الاستخدام مع الكوبون')
     ]) },
   categories: { label: 'التصنيفات', table: 'categories', cols: 'id,name_ar,is_active', name: r => r.name_ar,
     checks: id => Promise.all([
@@ -4028,14 +4028,14 @@ const DC_ENTITIES = {
     ]) },
   products: { label: 'المنتجات', table: 'menu_items', cols: 'id,name_ar,is_available', name: r => r.name_ar,
     checks: id => Promise.all([
-      dcSafe('عروض تحتوي المنتج', 'menu_promotion_items', { item_id: id }, true, 'أزل المنتج من العروض أولًا'),
-      dcSafe('تقييمات العملاء على المنتج', 'reviews', { item_id: id }, true, 'التقييمات تُمحى مع المنتج. أخفِ المنتج بدل حذفه.'),
+      dcSafe('عروض تحتوي المنتج', 'menu_promotion_items', { item_id: id }, false, 'تُزال من العروض تلقائيًا'),
+      dcSafe('تقييمات العملاء على المنتج', 'reviews', { item_id: id }, false, 'تُحذف مع المنتج'),
       dcSafe('أحجام المنتج', 'item_sizes', { item_id: id }, false, 'تُحذف مع المنتج'),
       dcSafe('إضافات مرتبطة بالمنتج', 'item_addons', { item_id: id }, false, 'تُفصل تلقائيًا'),
       dcSafe('مجموعات إضافات', 'addon_groups', { item_id: id }, false, 'تُحذف مع المنتج'),
       dcSafe('شارات المنتج', 'menu_item_badges', { item_id: id }, false, 'ارتباط تعريفي بالمنتج'),
-      dcSafe('بنود الطلبات السابقة', 'order_items', { item_id: id }, true, 'لا يُحذف منتج دخل في طلب سابق حتى لا تتضرر تفاصيل الطلب وسجلاته.'),
-      dcSafe('عناصر سلال العملاء', 'customer_cart_items', { item_id: id }, true, 'أزل المنتج من السلال النشطة أولًا أو أوقفه مؤقتًا.')
+      dcSafe('بنود الطلبات السابقة', 'order_items', { item_id: id }, false, 'تبقى في الطلبات باسم المنتج المحفوظ'),
+      dcSafe('عناصر سلال العملاء', 'customer_cart_items', { item_id: id }, false, 'تُزال من السلال تلقائيًا')
     ]) },
   subcategories: { label: 'التصنيفات الفرعية', table: 'subcategories', cols: 'id,name_ar,category_id,is_active', name: r => r.name_ar,
     checks: id => Promise.all([
@@ -4060,11 +4060,11 @@ const DC_ENTITIES = {
     ]) },
   zones: { label: 'مناطق التوصيل', table: 'delivery_zones', cols: 'id,name_ar,is_active', name: r => r.name_ar,
     checks: id => Promise.all([
-      dcSafe('طلبات في هذه المنطقة', 'orders', { zone_id: id }, true, 'الطلبات تحتفظ بالمنطقة. عطّل المنطقة بدل حذفها.')
+      dcSafe('طلبات في هذه المنطقة', 'orders', { zone_id: id }, false, 'تبقى الطلبات بسعر التوصيل المحفوظ بدون منطقة')
     ]) },
   drivers: { label: 'السائقون', table: 'drivers', cols: 'id,full_name,is_active', name: r => r.full_name,
     checks: id => Promise.all([
-      dcSafe('طلبات أُسندت لهذا السائق', 'orders', { assigned_driver_id: id }, true, 'الطلبات تفقد السائق. عطّل السائق بدل حذفه.')
+      dcSafe('طلبات أُسندت لهذا السائق', 'orders', { assigned_driver_id: id }, false, 'تبقى الطلبات بدون سائق مسند')
     ]) },
   loyalty: { label: 'مستويات الولاء', table: 'loyalty_levels', cols: 'id,name_ar,min_points', name: r => r.name_ar, checks: async () => [] },
   appContent: { label: 'محتوى التطبيق', table: 'app_content', cols: 'id,label_ar,group_key,item_key', name: r => `${r.group_key}.${r.item_key}`, checks: async () => [] },
@@ -4093,6 +4093,12 @@ const DC_ENTITIES = {
     checks: id => Promise.all([
       dcSafe('المنتجات المحددة للكود', 'secret_menu_code_items', { code_id: id }, false, 'تحذف روابط المنتجات مع الكود'),
       dcSafe('عمليات إصدار مكافآت مرتبطة', 'secret_menu_reward_issuances', { code_id: id }, true, 'يوجد سجل إصدار مكافآت؛ لا تحذف الكود حتى لا تفقد سجل العملاء.')
+    ]) },
+  reviews: { label: 'التقييمات', table: 'reviews', cols: 'id,display_name,rating,comment', name: r => `${r.display_name || 'عميل'} · ${r.rating || 0} نجوم · ${(r.comment || '').slice(0, 40)}`, checks: async () => [] },
+  customers: { label: 'العملاء', table: 'profiles', cols: 'id,full_name,phone', name: r => r.full_name || r.phone || 'عميل',
+    checks: id => Promise.all([
+      dcSafe('طلبات العميل', 'orders', { user_id: id }, false, 'تبقى الطلبات كسجل مالي بدون ربط بالعميل'),
+      dcSafe('تقييمات العميل', 'reviews', { user_id: id }, false, 'تُحذف مع العميل')
     ]) },
   customerRestrictions: { label: 'قيود وحظر العملاء', table: 'customer_restrictions', cols: 'id,customer_phone,reason,is_blocked', name: r => `${r.customer_phone || 'عميل'} · ${r.reason || (r.is_blocked ? 'محظور' : 'قيد')}`, checks: async () => [] },
   adminNotifications: { label: 'إشعارات الإدارة', table: 'admin_notifications', cols: 'id,title,body,created_at', name: r => r.title || r.body || 'إشعار إداري', checks: async () => [] },
@@ -4216,6 +4222,22 @@ async function dcOpenConfirm(ent, row, v, entityKey = dcCurrent) {
   $('dc_go').onclick = async () => {
     const btn = $('dc_go'); btn.disabled = true; btn.textContent = '⏳ جاري الحذف...';
     try {
+      if (entityKey === 'zones') {
+        const rz = await sb.rpc('admin_delete_delivery_zone', { p_id: row.id });
+        if (rz.error) throw rz.error;
+        closeModal();
+        toast('تم حذف منطقة التوصيل نهائيًا', 'ok');
+        VIEWS['delete-center'](v);
+        return;
+      }
+      if (entityKey === 'customers') {
+        const rr = await sb.rpc('admin_delete_customer', { p_user: row.id });
+        if (rr.error) throw rr.error;
+        closeModal();
+        toast('تم حذف العميل نهائيًا', 'ok');
+        VIEWS['delete-center'](v);
+        return;
+      }
       await dcCleanupRelations(entityKey, row);
       let delQuery = sb.from(ent.table).delete();
       for (const [k, value] of Object.entries(rowFilters)) delQuery = delQuery.eq(k, value);
@@ -4328,7 +4350,7 @@ async function openCustomerDetail(id) {
     ${can(OM) ? `<div class="row" style="margin-top:12px">
       <button class="btn out sm" id="adjPts">➕ تعديل النقاط</button>
       <button class="btn out sm" id="giveCoupon">🎁 منح كوبون</button>
-      <button class="btn out ${c?.is_blocked ? 'ok' : 'dng'} sm" id="toggleBlock">${c?.is_blocked ? '🔓 فك الحظر' : '🚫 حظر'}</button>
+      <button class="btn out ${c?.is_blocked ? 'ok' : 'dng'} sm" id="toggleBlock">${c?.is_blocked ? '🔓 فك الحظر' : '🚫 حظر'}</button>\n      <button class="btn out dng sm" id="delCust">🗑️ حذف نهائي</button>
     </div>` : ''}
     ${loyalSection}
     <section>
@@ -4392,6 +4414,12 @@ async function openCustomerDetail(id) {
       } else if (existing.data?.[0]?.id) { const {error}=await sb.from('customer_restrictions').update({is_blocked:false,lifted_at:new Date().toISOString(),lifted_by:ME?.id||null,updated_at:new Date().toISOString()}).eq('id',existing.data[0].id); if(error) throw error; }
       toast(block ? 'تم الحظر' : 'تم فك الحظر', 'ok'); closeModal(); openCustomerDetail(id);
     } catch (e) { fail(e); }
+  };
+  if ($('delCust')) $('delCust').onclick = async () => {
+    if (!await ask('حذف العميل', 'حذف العميل نهائيًا؟ طلباته تبقى كسجل مالي بدون ربط به، وتقييماته تُحذف.', 'حذف')) return;
+    const { error } = await sb.rpc('admin_delete_customer', { p_user: id });
+    if (error) return fail(error);
+    toast('تم حذف العميل', 'ok'); closeModal(); go('customers');
   };
 }
 
@@ -4670,7 +4698,7 @@ VIEWS.reviews = async v => {
         <td data-label="النجوم" style="color:#F9A825">${'⭐'.repeat(r.rating || 0)}</td>
         <td data-label="التعليق">${esc(r.comment || '—')}${r.admin_reply ? `<br><small style="color:var(--ok)">↩️ ${esc(r.admin_reply)}</small>` : ''}</td>
         <td data-label=""><div class="row">
-          ${can(OM) ? `<button class="btn out sm" data-a="reply">💬 رد</button><button class="btn out dng sm" data-a="del">🙈 إخفاء</button>` : ''}
+          ${can(OM) ? `<button class="btn out sm" data-a="reply">💬 رد</button><button class="btn out dng sm" data-a="del">🙈 إخفاء</button><button class="btn out dng sm" data-a="hdel">🗑️ حذف</button>` : ''}
         </div></td>
       </tr>`).join('')}</tbody></table>${renderPager(p, 'reviews')}`
       : '<div class="empty">مفيش تقييمات</div>'}`;
@@ -4702,6 +4730,12 @@ VIEWS.reviews = async v => {
     const { error } = await sb.from('reviews').update({is_hidden:true}).eq('id', b.closest('tr').dataset.id);
     if (error) return fail(error);
     toast('تم إخفاء التقييم', 'ok'); go('reviews');
+  });
+  v.querySelectorAll('[data-a="hdel"]').forEach(b => b.onclick = async () => {
+    if (!await ask('حذف', 'حذف التقييم نهائيًا؟', 'حذف')) return;
+    const { error } = await sb.from('reviews').delete().eq('id', b.closest('tr').dataset.id);
+    if (error) return fail(error);
+    toast('تم حذف التقييم نهائيًا', 'ok'); go('reviews');
   });
   v.querySelectorAll('[data-page]').forEach(b => b.onclick = () => { pageIdx['reviews'] = Number(b.dataset.page); go('reviews'); });
 };
