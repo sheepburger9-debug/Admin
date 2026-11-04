@@ -5242,7 +5242,7 @@ VIEWS.health = async v => {
    - كل عملية كتابة تتحقق من الاستجابة (select) ثم يُعاد تحميل القائمة من قاعدة البيانات.
    - سياسات RLS الحالية تسمح بالكتابة للمالك والمدير فقط (OM)، ولم نغيّرها.
    ═══════════════════════════════════════════════════ */
-const HP_TABS = [['blocks','🧱 البلوكات'], ['banners','🖼️ البنرات'], ['announcements','📢 الإعلانات النصية']];
+const HP_TABS = [['order','↕️ ترتيب أقسام الصفحة'], ['blocks','🧱 البلوكات'], ['banners','🖼️ البنرات'], ['announcements','📢 الإعلانات النصية']];
 const HP_BLOCK_TYPES = {
   product_carousel:'شريط منتجات', campaign_hero:'واجهة حملة', promo_banner:'بانر ترويجي',
   text_promo:'نص ترويجي', category_grid:'شبكة تصنيفات', product_grid:'شبكة منتجات', promotion_cards:'بطاقات عروض'
@@ -5384,7 +5384,8 @@ VIEWS.homepage = async v => {
 
 async function hpRenderTab(body, v) {
   try {
-    if (hpState.tab === 'blocks') await hpRenderBlocks(body, v);
+    if (hpState.tab === 'order') await hpRenderSectionOrder(body, v);
+    else if (hpState.tab === 'blocks') await hpRenderBlocks(body, v);
     else if (hpState.tab === 'banners') await hpRenderBanners(body, v);
     else await hpRenderAnnouncements(body, v);
   } catch (e) {
@@ -5392,6 +5393,68 @@ async function hpRenderTab(body, v) {
     body.innerHTML = `<div class="empty">تعذر تحميل البيانات من قاعدة البيانات: ${esc(hpErrMsg(e))}
       <div style="margin-top:10px"><button class="btn out sm" onclick="VIEWS.homepage($('view'))">إعادة المحاولة</button></div></div>`;
   }
+}
+
+
+/* ═══════════ ترتيب أقسام الصفحة الرئيسية ═══════════ */
+async function hpRenderSectionOrder(body, v) {
+  const rows = await hpLoadTable('homepage_section_order');
+  const ordered = hpByOrder(rows);
+  const labels = {
+    hero_slider: 'البنر الرئيسي', promotion_pages: 'بطاقات صفحات العروض',
+    announcements: 'الإعلانات المصورة', sale_strip: 'منتجات التخفيضات',
+    homepage_blocks: 'البلوكات والأقسام', text_row: 'شريط النصوص', secret_menu: 'المنيو السري'
+  };
+  body.innerHTML = `
+    <div class="set-card" style="margin-bottom:12px">
+      <b>ترتيب موحّد للصفحة الرئيسية</b>
+      <p style="font-size:13px;color:var(--ink2);line-height:1.8;margin:6px 0 0">
+        استخدم السهمين لتغيير مكان القسم، أو أوقف ظهوره مؤقتًا. التغيير يُحفظ مباشرة في قاعدة البيانات ويطبّق على تطبيق العميل.
+      </p>
+    </div>
+    <div id="hp-section-order-list">
+      ${ordered.map((r, i) => `
+        <div class="set-card" style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+          <div style="flex:1;min-width:0">
+            <b>${esc(labels[r.section_key] || r.title_ar || r.section_key)}</b>
+            <div style="font-size:12px;color:var(--ink2);margin-top:4px">الترتيب: ${r.sort_order}</div>
+          </div>
+          <button class="btn out sm" data-section-move="-1" data-key="${esc(r.section_key)}" ${i===0?'disabled':''} aria-label="تحريك لأعلى">↑</button>
+          <button class="btn out sm" data-section-move="1" data-key="${esc(r.section_key)}" ${i===ordered.length-1?'disabled':''} aria-label="تحريك لأسفل">↓</button>
+          <button class="btn ${r.is_visible ? 'ok' : 'out'} sm" data-section-toggle data-key="${esc(r.section_key)}">${r.is_visible ? 'ظاهر' : 'مخفي'}</button>
+        </div>`).join('')}
+    </div>`;
+  body.onclick = async e => {
+    const toggle = e.target.closest('[data-section-toggle]');
+    const move = e.target.closest('[data-section-move]');
+    if (!toggle && !move) return;
+    const key = (toggle || move).dataset.key;
+    try {
+      if (toggle) {
+        const row = rows.find(x => x.section_key === key);
+        const r = await sb.from('homepage_section_order')
+          .update({ is_visible: !row.is_visible, updated_at: new Date().toISOString() })
+          .eq('section_key', key).select('section_key');
+        if (r.error) throw r.error;
+        if (!r.data?.length) throw new Error('لم يتم حفظ حالة القسم');
+      } else {
+        const arr = hpByOrder(rows);
+        const i = arr.findIndex(x => x.section_key === key);
+        const j = i + Number(move.dataset.sectionMove);
+        if (i < 0 || j < 0 || j >= arr.length) return;
+        [arr[i], arr[j]] = [arr[j], arr[i]];
+        for (let k = 0; k < arr.length; k++) {
+          const r = await sb.from('homepage_section_order')
+            .update({ sort_order: (k + 1) * 10, updated_at: new Date().toISOString() })
+            .eq('section_key', arr[k].section_key).select('section_key');
+          if (r.error) throw r.error;
+          if (!r.data?.length) throw new Error('لم يتم حفظ ترتيب الأقسام');
+        }
+      }
+      toast('تم حفظ ترتيب الصفحة الرئيسية', 'ok');
+      await hpRenderSectionOrder(body, v);
+    } catch (err) { fail(err, hpErrMsg(err)); }
+  };
 }
 
 /* ═══════════ البلوكات ═══════════ */
