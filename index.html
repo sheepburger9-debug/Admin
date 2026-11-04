@@ -1,29 +1,42 @@
 <!DOCTYPE html>
 <!--
-  لوحة تحكم Sheep & Burger — ملف واحد (HTML + CSS + JS).
-  ملف واحد كامل: CSS وJS والـ manifest والأيقونات مضمّنة داخله.
+  SHEEP & BURGER — ADMIN DASHBOARD
+  الملف الرئيسي الوحيد للوحة الإدارة: HTML + CSS + JavaScript.
+  لا تنقل التنسيقات أو الأكواد إلى ملفات خارجية؛ حافظ على هذا الملف مستقلًا.
 
-  فهرس الملف:
-  [1] تنسيقات التصميم (CSS)              — css/admin.css سابقًا
-  [2] هيكل HTML (الدخول، الهيكل، الحوارات)
-  [3] مكتبة Supabase (CDN بإصدار 2)
-  [4] إعدادات المشروع                      — js/01-config
-  [5] الدفع والأدوار والتنقل               — js/02
-  [6] أدوات مساعدة                         — js/03
-  [7] الرسوم البيانية                      — js/04
-  [8] الصوت والثيم والشبكة                 — js/05
-  [9] حالة Supabase                        — js/06
-  [10] المصادقة                            — js/07
-  [11] التنقل بين الشاشات                  — js/08
-  [12] Realtime                           — js/09
-  [13] Kanban                             — js/10
-  [13b] الصفحة الرئيسية (بلوكات/بنرات/إعلانات) — مدمجة في VIEWS.homepage
-  [14] إجراءات الطلبات                     — js/11
-  [15] الشاشات                             — js/12
-  [16] الترقيم والجداول                    — js/13
-  [17] التهيئة                             — js/14
-  [18] حارس الإقلاع                        — js/00 (يبقى أول سكربت)
-  [19] PWA (manifest مضمّن، بدون Service Worker) — js/15
+  خريطة الملف (من الأعلى إلى الأسفل):
+  A) HEAD        بيانات الصفحة، الخطوط، الأيقونة، وCSS.
+  B) CSS         الأقسام 1–13: المتغيرات، الأساسيات، المكونات، والاستجابة.
+  C) HTML        شاشة الدخول، هيكل اللوحة، القائمة، المحتوى، والتنبيهات.
+  D) BOOT GUARD  حماية شاشة الدخول عند فشل JavaScript — يجب أن يسبق بقية الأكواد.
+  E) SUPABASE    مكتبة Supabase JS v2 من CDN (اعتماد خارجي مطلوب).
+  F) JAVASCRIPT  وحدات التنفيذ بالترتيب التالي، ولا تغيّر ترتيبها دون مراجعة الاعتماديات:
+       01  إعدادات المشروع والثوابت.
+       02  وسائل الدفع، الأدوار، الحالات، والقائمة.
+       03  الدوال والأدوات العامة.
+       04  الرسوم البيانية.
+       05  الصوت، المظهر، وحالة الاتصال.
+       06  حالة Supabase والبيانات المشتركة.
+       07  تسجيل الدخول والصلاحيات.
+       08  التنقل بين الشاشات.
+       09  التحديثات اللحظية Realtime.
+       10  لوحة الطلبات Kanban.
+       11  إجراءات الطلبات.
+       12  الشاشات وإدارات الميزات (المنيو، الفروع، العروض، الصفحة الرئيسية وغيرها).
+       13  الترقيم والجداول.
+       14  ربط الإضافات المساعدة بشاشة العروض والكوبونات.
+       15  تشغيل التطبيق واستعادة الجلسة.
+       16  تنظيف تسجيل Service Worker قديم محدد (إن وُجد).
+
+  قواعد الصيانة:
+  - الملف يظل index.html واحدًا؛ لا تنشئ ملفات CSS أو JS منفصلة.
+  - ترتيب تحميل وحدات JavaScript مقصود؛ قد تعتمد وحدة على ثوابت/دوال سابقة.
+  - ترقيم أقسام CSS مستقل عن ترقيم JavaScript، والعناوين الفرعية داخل وحدة الشاشات
+    تصف الميزات ولا تمثل ترتيب تحميل جديدًا.
+  - عند إضافة ميزة، ضعها بجوار أقرب ميزة مشابهة وأضف تعليقًا يوضح وظيفتها وجداولها.
+  - لا تغيّر أسماء الجداول أو الأعمدة أو سياسات RLS أو أسماء الدوال دون مراجعة Supabase.
+  - مفتاح Supabase الظاهر هنا Publishable/Anon key مخصص للواجهة؛ لا تضع أي Secret أو
+    Service Role Key داخل هذا الملف.
 -->
 <html lang="ar" dir="rtl">
 <head>
@@ -426,8 +439,9 @@ input,select,textarea{accent-color:var(--pri)}
 <meta name="mobile-web-app-capable" content="yes">
 </head>
 <body>
+<!-- بداية طبقة HTML: شاشات الدخول والهيكل العام للوحة -->
 <script>
-/* ---- inlined from js/00-boot-guard.js ---- */
+/* MODULE 00 · BOOT GUARD — يجب أن يظل قبل بقية وحدات JavaScript. */
 // Keep the login screen visible if a startup JavaScript error prevents the dashboard boot sequence.
 window.addEventListener('error', function (event) {
   var login = document.getElementById('login');
@@ -450,7 +464,7 @@ window.addEventListener('unhandledrejection', function () {
 </script>
 <a href="#view" class="skip-link">تخطي إلى المحتوى</a>
 
-<!-- ═══ LOGIN ═══ -->
+<!-- HTML 1 · شاشة تسجيل الدخول والتحقق الثنائي -->
 <div id="login" class="login" role="main">
   <form id="lform" class="lcard" novalidate>
     <h1>🐑 Sheep & Burger</h1>
@@ -474,7 +488,7 @@ window.addEventListener('unhandledrejection', function () {
   </form>
 </div>
 
-<!-- ═══ SHELL ═══ -->
+<!-- HTML 2 · الهيكل العام: القائمة الجانبية، الشريط العلوي، ومحتوى الصفحات -->
 <div id="shell" class="hidden">
   <aside id="side" aria-label="القائمة الجانبية">
     <div class="brand">🐑 Sheep & Burger</div>
@@ -498,12 +512,15 @@ window.addEventListener('unhandledrejection', function () {
     <main id="view" tabindex="-1"></main>
   </div>
 </div>
+<!-- HTML 3 · عناصر عامة مشتركة: الرسائل المنبثقة والنافذة الحوارية -->
 <div id="toasts" role="status" aria-live="polite" aria-atomic="false"></div>
 <div id="ov" role="dialog" aria-modal="true"><div class="mod" id="mod" tabindex="-1"></div></div>
 
+<!-- بداية طبقة JavaScript: حافظ على ترتيب الوحدات الموضح في فهرس الملف. -->
+<!-- اعتماد خارجي مطلوب: مكتبة Supabase JS v2 -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js" onerror="this.onerror=null;this.src='https://unpkg.com/@supabase/supabase-js@2/dist/umd/supabase.min.js'"></script>
 <script>
-/* ---- inlined from js/01-config.js ---- */
+/* MODULE 01 · CONFIG — إعدادات Supabase والثوابت العامة. */
 
 /* قاعدة البيانات: شغّل ملف supabase_setup.sql في Supabase SQL Editor مرة واحدة (جداول + RLS + دوال آمنة + Realtime).
    دعوة الموظفين: انشر Edge Function باسم invite-staff (ملف invite-staff/index.ts). */
@@ -528,7 +545,7 @@ const CONFIG = {
 };
 </script>
 <script>
-/* ---- inlined from js/02-payments-roles-nav.js ---- */
+/* MODULE 02 · PAYMENTS / ROLES / STATUS / NAV CONSTANTS. */
 /* ═══════════════════════════════════════════════════
    SECTION 2 · PAYMENTS + ROLES + STATUS + NAV
    ═══════════════════════════════════════════════════ */
@@ -613,7 +630,7 @@ const countable = o => o.status !== 'cancelled' && o.payment_status !== 'refunde
 const URGENT = { pending:3, confirmed:3, preparing:15, ready:5, out_for_delivery:30 };
 </script>
 <script>
-/* ---- inlined from js/03-utils.js ---- */
+/* MODULE 03 · UTILITIES — أدوات عامة مشتركة بين الشاشات. */
 /* ═══════════════════════════════════════════════════
    SECTION 3 · UTILS
    ═══════════════════════════════════════════════════ */
@@ -799,7 +816,7 @@ function animateTo(el, to) {
 }
 </script>
 <script>
-/* ---- inlined from js/04-charts.js ---- */
+/* MODULE 04 · CHARTS — رسم وإعادة رسم المخططات. */
 /* ═══════════════════════════════════════════════════
    SECTION 4 · CHARTS
    ═══════════════════════════════════════════════════ */
@@ -883,7 +900,7 @@ function lineChart(cv, labels, vals, color) {
 }
 </script>
 <script>
-/* ---- inlined from js/05-sound-theme-network.js ---- */
+/* MODULE 05 · SOUND / THEME / NETWORK — الصوت والمظهر والاتصال. */
 /* ═══════════════════════════════════════════════════
    SECTION 5 · SOUND + THEME + NETWORK
    ═══════════════════════════════════════════════════ */
@@ -974,7 +991,7 @@ window.addEventListener('offline', () => {
 });
 </script>
 <script>
-/* ---- inlined from js/06-supabase-state.js ---- */
+/* MODULE 06 · SUPABASE STATE — عميل قاعدة البيانات والحالة المشتركة. */
 /* ═══════════════════════════════════════════════════
    SECTION 6 · SUPABASE + STATE
    ═══════════════════════════════════════════════════ */
@@ -997,7 +1014,7 @@ const can = roles => ME && roles.includes(ME.role);
 const driverName = id => (DRV.find(d => d.id === id) || {}).full_name || '—';
 </script>
 <script>
-/* ---- inlined from js/07-auth.js ---- */
+/* MODULE 07 · AUTH — تسجيل الدخول والجلسات والتحقق والصلاحيات. */
 /* ═══════════════════════════════════════════════════
    SECTION 7 · AUTH
    ═══════════════════════════════════════════════════ */
@@ -1249,7 +1266,7 @@ async function loadOrders() {
 }
 </script>
 <script>
-/* ---- inlined from js/08-navigation.js ---- */
+/* MODULE 08 · NAVIGATION — التنقل وعرض الشاشات. */
 /* ═══════════════════════════════════════════════════
    SECTION 8 · NAVIGATION
    ═══════════════════════════════════════════════════ */
@@ -1359,7 +1376,7 @@ document.addEventListener('keydown', e => {
 });
 </script>
 <script>
-/* ---- inlined from js/09-realtime.js ---- */
+/* MODULE 09 · REALTIME — الاشتراكات والتحديثات اللحظية. */
 /* ═══════════════════════════════════════════════════
    SECTION 9 · REALTIME
    ═══════════════════════════════════════════════════ */
@@ -1446,7 +1463,7 @@ function setOpen(v) {
 $('snd').title = soundOn ? 'إيقاف الصوت' : 'تفعيل الصوت';
 </script>
 <script>
-/* ---- inlined from js/10-kanban.js ---- */
+/* MODULE 10 · KANBAN — عرض الطلبات وأعمدة سير العمل. */
 /* ═══════════════════════════════════════════════════
    SECTION 10 · KANBAN
    ═══════════════════════════════════════════════════ */
@@ -1573,7 +1590,7 @@ document.addEventListener('drop', async e => {
 });
 </script>
 <script>
-/* ---- inlined from js/11-order-actions.js ---- */
+/* MODULE 11 · ORDER ACTIONS — إجراءات الطلبات وتغيير حالاتها. */
 /* ═══════════════════════════════════════════════════
    SECTION 11 · ORDER ACTIONS
    ═══════════════════════════════════════════════════ */
@@ -1828,7 +1845,7 @@ function applyFilter() {
 }
 </script>
 <script>
-/* ---- inlined from js/12-views.js ---- */
+/* MODULE 12 · VIEWS — الشاشات وإدارات الميزات داخل لوحة الإدارة. */
 /* ═══════════════════════════════════════════════════
    SECTION 12 · VIEWS
    ═══════════════════════════════════════════════════ */
@@ -5242,7 +5259,7 @@ VIEWS.health = async v => {
    - كل عملية كتابة تتحقق من الاستجابة (select) ثم يُعاد تحميل القائمة من قاعدة البيانات.
    - سياسات RLS الحالية تسمح بالكتابة للمالك والمدير فقط (OM)، ولم نغيّرها.
    ═══════════════════════════════════════════════════ */
-const HP_TABS = [['order','↕️ ترتيب أقسام الصفحة'], ['blocks','🧱 البلوكات'], ['banners','🖼️ البنرات'], ['announcements','📢 الإعلانات النصية']];
+const HP_TABS = [['blocks','🧱 البلوكات'], ['banners','🖼️ البنرات'], ['announcements','📢 الإعلانات النصية']];
 const HP_BLOCK_TYPES = {
   product_carousel:'شريط منتجات', campaign_hero:'واجهة حملة', promo_banner:'بانر ترويجي',
   text_promo:'نص ترويجي', category_grid:'شبكة تصنيفات', product_grid:'شبكة منتجات', promotion_cards:'بطاقات عروض'
@@ -5384,8 +5401,7 @@ VIEWS.homepage = async v => {
 
 async function hpRenderTab(body, v) {
   try {
-    if (hpState.tab === 'order') await hpRenderSectionOrder(body, v);
-    else if (hpState.tab === 'blocks') await hpRenderBlocks(body, v);
+    if (hpState.tab === 'blocks') await hpRenderBlocks(body, v);
     else if (hpState.tab === 'banners') await hpRenderBanners(body, v);
     else await hpRenderAnnouncements(body, v);
   } catch (e) {
@@ -5395,70 +5411,47 @@ async function hpRenderTab(body, v) {
   }
 }
 
-
-/* ═══════════ ترتيب أقسام الصفحة الرئيسية ═══════════ */
-async function hpRenderSectionOrder(body, v) {
-  const rows = await hpLoadTable('homepage_section_order');
-  const ordered = hpByOrder(rows);
-  const labels = {
-    hero_slider: 'البنر الرئيسي', promotion_pages: 'بطاقات صفحات العروض',
-    announcements: 'الإعلانات المصورة', sale_strip: 'منتجات التخفيضات',
-    homepage_blocks: 'البلوكات والأقسام', secret_menu: 'المنيو السري'
-  };
-  body.innerHTML = `
-    <div class="set-card" style="margin-bottom:12px">
-      <b>ترتيب موحّد للصفحة الرئيسية</b>
-      <p style="font-size:13px;color:var(--ink2);line-height:1.8;margin:6px 0 0">
-        استخدم السهمين لتغيير مكان القسم، أو أوقف ظهوره مؤقتًا. التغيير يُحفظ مباشرة في قاعدة البيانات ويطبّق على تطبيق العميل.
-      </p>
-    </div>
-    <div id="hp-section-order-list">
-      ${ordered.map((r, i) => `
-        <div class="set-card" style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
-          <div style="flex:1;min-width:0">
-            <b>${esc(labels[r.section_key] || r.title_ar || r.section_key)}</b>
-            <div style="font-size:12px;color:var(--ink2);margin-top:4px">الترتيب: ${r.sort_order}</div>
-          </div>
-          <button class="btn out sm" data-section-move="-1" data-key="${esc(r.section_key)}" ${i===0?'disabled':''} aria-label="تحريك لأعلى">↑</button>
-          <button class="btn out sm" data-section-move="1" data-key="${esc(r.section_key)}" ${i===ordered.length-1?'disabled':''} aria-label="تحريك لأسفل">↓</button>
-          <button class="btn ${r.is_visible ? 'ok' : 'out'} sm" data-section-toggle data-key="${esc(r.section_key)}">${r.is_visible ? 'ظاهر' : 'مخفي'}</button>
-        </div>`).join('')}
-    </div>`;
-  body.onclick = async e => {
-    const toggle = e.target.closest('[data-section-toggle]');
-    const move = e.target.closest('[data-section-move]');
-    if (!toggle && !move) return;
-    const key = (toggle || move).dataset.key;
-    try {
-      if (toggle) {
-        const row = rows.find(x => x.section_key === key);
-        const r = await sb.from('homepage_section_order')
-          .update({ is_visible: !row.is_visible, updated_at: new Date().toISOString() })
-          .eq('section_key', key).select('section_key');
-        if (r.error) throw r.error;
-        if (!r.data?.length) throw new Error('لم يتم حفظ حالة القسم');
-      } else {
-        const arr = hpByOrder(rows);
-        const i = arr.findIndex(x => x.section_key === key);
-        const j = i + Number(move.dataset.sectionMove);
-        if (i < 0 || j < 0 || j >= arr.length) return;
-        [arr[i], arr[j]] = [arr[j], arr[i]];
-        for (let k = 0; k < arr.length; k++) {
-          const r = await sb.from('homepage_section_order')
-            .update({ sort_order: (k + 1) * 10, updated_at: new Date().toISOString() })
-            .eq('section_key', arr[k].section_key).select('section_key');
-          if (r.error) throw r.error;
-          if (!r.data?.length) throw new Error('لم يتم حفظ ترتيب الأقسام');
-        }
-      }
-      toast('تم حفظ ترتيب الصفحة الرئيسية', 'ok');
-      await hpRenderSectionOrder(body, v);
-    } catch (err) { fail(err, hpErrMsg(err)); }
-  };
-}
-
 /* ═══════════ البلوكات ═══════════ */
 async function hpRenderBlocks(body, v) {
+  /* تصميم مبسط لقسم البلوكات فقط؛ لا يغيّر قاعدة البيانات أو وظائف الحفظ. */
+  if (!document.getElementById('hp-blocks-clean-style')) {
+    const style = document.createElement('style');
+    style.id = 'hp-blocks-clean-style';
+    style.textContent = `
+      .hp-block-toolbar{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:14px}
+      .hp-block-toolbar__actions{display:flex;gap:8px;flex-wrap:wrap}
+      .hp-block-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,360px),1fr));gap:14px;align-items:start}
+      .hp-block-card{min-width:0;margin:0!important;padding:14px!important;border:1px solid var(--line);border-radius:16px;background:var(--sf);box-shadow:0 2px 10px #00000008}
+      .hp-block-card__head{display:flex;gap:12px;align-items:flex-start;min-width:0}
+      .hp-block-card__cover{width:68px;height:68px;object-fit:cover;border-radius:12px;flex:0 0 68px;background:var(--bg2)}
+      .hp-block-card__main{flex:1;min-width:0}
+      .hp-block-card__title{font-size:16px;font-weight:900;line-height:1.5;overflow-wrap:anywhere}
+      .hp-block-card__meta{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:7px}
+      .hp-block-card__desc{font-size:12px;color:var(--ink2);line-height:1.7;margin-top:7px}
+      .hp-block-card__items{margin-top:13px;padding:10px;border-radius:12px;background:var(--bg2);}
+      .hp-block-card__items-head{display:flex;justify-content:space-between;gap:8px;align-items:center;font-size:12px;font-weight:800;margin-bottom:8px}
+      .hp-block-card__preview{display:flex;gap:7px;flex-wrap:wrap;align-items:center}
+      .hp-block-card__preview-item{display:inline-flex;align-items:center;gap:6px;max-width:100%;padding:4px 8px 4px 5px;border:1px solid var(--line);border-radius:9px;background:var(--sf);font-size:12px}
+      .hp-block-card__preview-item span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:145px}
+      .hp-block-card__warning{font-size:12px;line-height:1.7;margin-top:8px;color:var(--warn)}
+      .hp-block-card__warning.is-error{color:var(--err)}
+      .hp-block-card__footer{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-top:13px;padding-top:12px;border-top:1px solid var(--line)}
+      .hp-block-card__order{display:flex;gap:5px;align-items:center}
+      .hp-block-card__actions{display:flex;gap:6px;flex-wrap:wrap}
+      .hp-block-card__actions .btn{min-height:36px}
+      .hp-editor-section{padding:13px;margin:12px 0;border:1px solid var(--line);border-radius:13px;background:var(--bg2)}
+      .hp-editor-section h3{font-size:14px;margin:0 0 10px;font-weight:900}
+      .hp-editor-section p{font-size:12px;color:var(--ink2);line-height:1.7;margin:0 0 10px}
+      .hp-editor-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 12px}
+      .hp-editor-grid>*{min-width:0}
+      .hp-editor-colors{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+      .hp-editor-colors label{min-width:0}
+      .hp-editor-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
+      @media(max-width:480px){.hp-editor-grid{grid-template-columns:1fr}.hp-editor-colors{grid-template-columns:1fr}}
+      @media(max-width:480px){.hp-block-card{padding:11px!important}.hp-block-card__cover{width:56px;height:56px;flex-basis:56px}.hp-block-card__footer{align-items:stretch}.hp-block-card__actions{width:100%}.hp-block-card__actions .btn{flex:1}.hp-block-card__order{width:100%;justify-content:flex-start}}
+    `;
+    document.head.appendChild(style);
+  }
   const [{ rows, counts, itemsBy }, lookups] = await Promise.all([hpLoadBlocks(), hpLoadLookups()]);
   const ordered = hpByOrder(rows);
   const visible = hpApplyFilter('blocks', ordered);
@@ -5485,41 +5478,47 @@ async function hpRenderBlocks(body, v) {
       : (bId ? '<span class="pay-badge" style="color:var(--err)">شارة محذوفة</span>' : '');
     const preview = items.slice(0, 4).map(i => chip(i.missing ? 'border-color:var(--err);color:var(--err)' : (i.active ? '' : 'opacity:.6'), `${thumb(i.img, 24)}<span>${esc(i.name)}</span>`)).join('')
       + (items.length > 4 ? `<span style="font-size:12px;color:var(--ink2);align-self:center">+${items.length - 4}</span>` : '');
-    return `<div class="set-card" style="margin-bottom:10px">
-      <div style="display:flex;gap:12px;align-items:flex-start">
-        ${thumb(cover, 56)}
-        <div style="flex:1;min-width:0">
-          <div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;align-items:center">
-            <b>${esc(b.title_ar || '(بدون عنوان)')}</b>
-            <span style="display:flex;gap:6px;align-items:center">${hpBadge(st)}<small style="color:var(--ink2)">ترتيب ${b.sort_order}</small></span>
-          </div>
-          <div style="display:flex;gap:6px;flex-wrap:wrap;margin:6px 0">
+    return `<article class="set-card hp-block-card">
+      <div class="hp-block-card__head">
+        ${cover ? `<img class="hp-block-card__cover" src="${esc(cover)}" alt="" loading="lazy">` : `<div class="hp-block-card__cover" style="display:flex;align-items:center;justify-content:center;font-size:27px">🧱</div>`}
+        <div class="hp-block-card__main">
+          <div class="hp-block-card__title">${esc(b.title_ar || '(بدون عنوان)')}</div>
+          <div class="hp-block-card__meta">
+            ${hpBadge(st)}
             <span class="pay-badge">${esc(HP_BLOCK_TYPES[b.block_type] || b.block_type)}</span>
             <span class="pay-badge">${esc(HP_LAYOUTS[b.layout_type] || b.layout_type)}</span>
-            <span class="pay-badge">${counts[b.id] || 0} عنصر</span>
             ${badgeChip}
           </div>
-          ${b.subtitle_ar ? `<div style="font-size:12px;margin-bottom:6px;color:var(--ink2)">${esc(b.subtitle_ar)}</div>` : ''}
-          ${items.length === 0 ? '<div style="font-size:12px;color:var(--warn)">⚠️ البلوك فاضي، ما فيش عناصر بتظهر فيه</div>' : ''}
-          ${missing ? `<div style="font-size:12px;color:var(--err)">⚠️ ${missing} عنصر مربوط بحاجة مش موجودة</div>` : ''}
-          <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">${preview}</div>
-          <div style="font-size:11px;color:var(--ink2);margin-top:6px">أُنشئ: ${dt(b.created_at)} · عُدّل: ${dt(b.updated_at)}</div>
+          ${b.subtitle_ar ? `<div class="hp-block-card__desc">${esc(b.subtitle_ar)}</div>` : ''}
         </div>
       </div>
-      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px">
-        ${canMove ? `<button class="btn out sm" data-act="up" data-id="${b.id}" ${pos === 0 ? 'disabled' : ''} aria-label="تحريك لأعلى">↑</button>
-        <button class="btn out sm" data-act="down" data-id="${b.id}" ${pos === ordered.length - 1 ? 'disabled' : ''} aria-label="تحريك لأسفل">↓</button>` : ''}
-        <button class="btn out sm" data-act="items" data-id="${b.id}">🧩 العناصر (${counts[b.id] || 0})</button>
-        <button class="btn out sm" data-act="edit" data-id="${b.id}">✏️ تعديل</button>
-        <button class="btn out sm ${b.is_active ? 'wr' : 'ok'}" data-act="toggle" data-id="${b.id}">${b.is_active ? 'إيقاف' : 'تفعيل'}</button>
-        <button class="btn out sm dng" data-act="delete" data-id="${b.id}">🗑️ حذف</button>
+      <div class="hp-block-card__items">
+        <div class="hp-block-card__items-head"><span>محتويات البلوك</span><span>${counts[b.id] || 0} عنصر</span></div>
+        ${items.length ? `<div class="hp-block-card__preview">${preview || '<small style="color:var(--ink2)">لا توجد معاينة للعناصر</small>'}</div>` : '<div class="hp-block-card__desc" style="margin:0">لا توجد عناصر مضافة حتى الآن.</div>'}
+        ${missing ? `<div class="hp-block-card__warning is-error">⚠️ يوجد ${missing} عنصر مرتبط بهدف غير موجود.</div>` : ''}
+        ${items.length === 0 ? '<div class="hp-block-card__warning">أضف عناصر حتى يظهر محتوى هذا البلوك للعميل.</div>' : ''}
       </div>
-    </div>`;
+      <div class="hp-block-card__footer">
+        <div class="hp-block-card__order">
+          <small style="color:var(--ink2)">الترتيب: ${b.sort_order}</small>
+          ${canMove ? `<button class="btn out sm" data-act="up" data-id="${b.id}" ${pos === 0 ? 'disabled' : ''} aria-label="تحريك لأعلى">↑</button><button class="btn out sm" data-act="down" data-id="${b.id}" ${pos === ordered.length - 1 ? 'disabled' : ''} aria-label="تحريك لأسفل">↓</button>` : ''}
+        </div>
+        <div class="hp-block-card__actions">
+          <button class="btn out sm" data-act="items" data-id="${b.id}">🧩 إدارة العناصر</button>
+          <button class="btn out sm" data-act="edit" data-id="${b.id}">✏️ تعديل</button>
+          <button class="btn out sm ${b.is_active ? 'wr' : 'ok'}" data-act="toggle" data-id="${b.id}">${b.is_active ? 'إيقاف' : 'تفعيل'}</button>
+          <button class="btn out sm dng" data-act="delete" data-id="${b.id}">حذف</button>
+        </div>
+      </div>
+    </article>`;
   };
   body.innerHTML = `
-    <div class="row" style="margin-bottom:12px;gap:8px;flex-wrap:wrap"><button class="btn pri" id="hp-block-add">+ بلوك جديد</button><button class="btn out" id="hp-pages-btn">📄 صفحات الحملات</button></div>
+    <div class="hp-block-toolbar">
+      <div><h3 style="margin:0 0 4px;font-size:17px">بلوكات الصفحة الرئيسية</h3><small style="color:var(--ink2)">رتّب الأقسام وحدد المحتوى الذي يظهر للعملاء.</small></div>
+      <div class="hp-block-toolbar__actions"><button class="btn pri" id="hp-block-add">+ إنشاء بلوك</button><button class="btn out" id="hp-pages-btn">📄 صفحات الحملات</button></div>
+    </div>
     ${hpFilterBar('blocks')}
-    <div class="table-wrap">
+    <div class="hp-block-list">
       ${visible.length === 0 ? '<div class="empty">لا توجد بلوكات مطابقة في قاعدة البيانات</div>' : visible.map(cardOf).join('')}
     </div>`;
   $('hp-block-add').onclick = () => hpBlockEditor(null, ordered, lookups, v);
@@ -5569,26 +5568,38 @@ function hpBlockEditor(row, ordered, lookups, v) {
   const posOpts = `<option value="first" ${defaultPos === 'first' ? 'selected' : ''}>أول الصفحة</option>`
     + others.map(x => `<option value="after:${x.id}" ${defaultPos === 'after:' + x.id ? 'selected' : ''}>بعد: ${esc(x.title_ar || '(بدون عنوان)')}</option>`).join('')
     + `<option value="last" ${defaultPos === 'last' ? 'selected' : ''}>آخر الصفحة</option>`;
-  openModal(`<h2>${isNew ? 'بلوك جديد' : 'تعديل البلوك'} <button class="close" onclick="closeModal()" aria-label="إغلاق">✕</button></h2>
-    <label>نوع البلوك *</label>
-    <select id="hb_type">${Object.entries(HP_BLOCK_TYPES).map(([k, l]) => `<option value="${k}" ${r.block_type === k ? 'selected' : ''}>${l}</option>`).join('')}</select>
-    <label>طريقة العرض *</label>
-    <select id="hb_layout">${Object.entries(HP_LAYOUTS).map(([k, l]) => `<option value="${k}" ${r.layout_type === k ? 'selected' : ''}>${l}</option>`).join('')}</select>
-    <label>شارة البلوك (اختياري)</label>
-    <select id="hb_badge">${badgeOpts}</select>
-    ${(lookups.badge || []).length ? '' : '<small style="display:block;color:var(--ink2);margin-top:4px">ما فيش شارات معرّفة بعد في جدول الشارات.</small>'}
-    <label>مكان الظهور في الصفحة</label>
-    <select id="hb_pos">${posOpts}</select>
-    <label>العنوان</label><input id="hb_title" maxlength="120" value="${esc(r.title_ar || '')}">
-    <label>الوصف</label><textarea id="hb_sub" maxlength="300">${esc(r.subtitle_ar || '')}</textarea>
-    <label>بداية الظهور (اختياري)</label><input id="hb_start" type="datetime-local" value="${hpToLocal(r.starts_at)}">
-    <label>نهاية الظهور (اختياري)</label><input id="hb_end" type="datetime-local" value="${hpToLocal(r.ends_at)}">
-    <label>لون الخلفية (اختياري، مثال #FFFFFF)</label><input id="hb_bg" dir="ltr" value="${esc(r.background_color || '')}">
-    <label>لون النص (اختياري)</label><input id="hb_fg" dir="ltr" value="${esc(r.text_color || '')}">
-    <label>لون التمييز (اختياري)</label><input id="hb_ac" dir="ltr" value="${esc(r.accent_color || '')}">
-    <label class="toggle" style="margin-top:12px"><span>مفعّل</span><input type="checkbox" id="hb_active" ${r.is_active ? 'checked' : ''}></label>
-    <div class="row" style="margin-top:14px"><button class="btn pri big" id="hb_save">💾 حفظ</button>
-    <button class="btn out big" onclick="closeModal()">إلغاء</button></div>`);
+  openModal(`<h2>${isNew ? 'إنشاء بلوك جديد' : 'تعديل البلوك'} <button class="close" onclick="closeModal()" aria-label="إغلاق">✕</button></h2>
+    <section class="hp-editor-section">
+      <h3>١. محتوى البلوك</h3><p>حدد نوع القسم وطريقة عرضه، ثم اكتب العنوان والوصف الذي سيظهر للعميل.</p>
+      <div class="hp-editor-grid">
+        <div><label>نوع البلوك *</label><select id="hb_type">${Object.entries(HP_BLOCK_TYPES).map(([k, l]) => `<option value="${k}" ${r.block_type === k ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
+        <div><label>طريقة العرض *</label><select id="hb_layout">${Object.entries(HP_LAYOUTS).map(([k, l]) => `<option value="${k}" ${r.layout_type === k ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
+      </div>
+      <label>عنوان البلوك</label><input id="hb_title" maxlength="120" value="${esc(r.title_ar || '')}" placeholder="مثال: الأكثر طلبًا">
+      <label>وصف مختصر (اختياري)</label><textarea id="hb_sub" maxlength="300" placeholder="اكتب وصفًا يظهر أسفل العنوان">${esc(r.subtitle_ar || '')}</textarea>
+      <label>شارة البلوك (اختياري)</label><select id="hb_badge">${badgeOpts}</select>
+      ${(lookups.badge || []).length ? '' : '<small style="display:block;color:var(--ink2);margin-top:4px">لا توجد شارات معرّفة بعد في جدول الشارات.</small>'}
+    </section>
+    <section class="hp-editor-section">
+      <h3>٢. مكان وموعد الظهور</h3><p>حدد موضع البلوك في الصفحة، ويمكنك جدولة بداية ونهاية ظهوره.</p>
+      <label>مكان الظهور في الصفحة</label><select id="hb_pos">${posOpts}</select>
+      <div class="hp-editor-grid">
+        <div><label>بداية الظهور (اختياري)</label><input id="hb_start" type="datetime-local" value="${hpToLocal(r.starts_at)}"></div>
+        <div><label>نهاية الظهور (اختياري)</label><input id="hb_end" type="datetime-local" value="${hpToLocal(r.ends_at)}"></div>
+      </div>
+    </section>
+    <section class="hp-editor-section">
+      <h3>٣. ألوان البلوك (اختياري)</h3><p>اترك اللون فارغًا لاستخدام ألوان التصميم الافتراضية.</p>
+      <div class="hp-editor-colors">
+        <div><label>الخلفية</label><input id="hb_bg" dir="ltr" placeholder="#FFFFFF" value="${esc(r.background_color || '')}"></div>
+        <div><label>لون النص</label><input id="hb_fg" dir="ltr" placeholder="#222222" value="${esc(r.text_color || '')}"></div>
+        <div><label>لون التمييز</label><input id="hb_ac" dir="ltr" placeholder="#D9401F" value="${esc(r.accent_color || '')}"></div>
+      </div>
+    </section>
+    <section class="hp-editor-section"><h3>٤. حالة البلوك</h3>
+      <label class="toggle" style="margin:0"><span>إظهار البلوك للعملاء</span><input type="checkbox" id="hb_active" ${r.is_active ? 'checked' : ''}></label>
+    </section>
+    <div class="hp-editor-actions"><button class="btn pri big" id="hb_save">💾 حفظ البلوك</button><button class="btn out big" onclick="closeModal()">إلغاء</button></div>`);
 
   $('hb_save').onclick = async () => {
     const btn = $('hb_save');
@@ -6580,7 +6591,7 @@ window.toggleZone = async (id, active) => {
 window.deleteZone = id => window.toggleZone(id, false);
 </script>
 <script>
-/* ---- inlined from js/13-pagination-table.js ---- */
+/* MODULE 13 · PAGINATION / TABLES — الترقيم ومكونات الجداول العامة. */
 /* ═══════════════════════════════════════════════════
    SECTION 13 · PAGINATION + GENERIC TABLE
    ═══════════════════════════════════════════════════ */
@@ -6602,7 +6613,7 @@ function renderPager(p, key) {
 }
 </script>
 <script>
-/* جوائز العجلة داخل شاشة «العروض والكوبونات» */
+/* MODULE 14 · OFFERS EXTENSIONS — إضافة جوائز العجلة والولاء والمنيو السري لشاشة العروض. */
 VIEWS.offers = (function (orig) {
   return async v => {
     await orig(v);
@@ -6628,7 +6639,7 @@ VIEWS.offers = (function (orig) {
 })(VIEWS.offers);
 </script>
 <script>
-/* ---- inlined from js/14-boot.js ---- */
+/* MODULE 15 · APP BOOT — استعادة الجلسة وبدء تشغيل اللوحة. */
 /* ═══════════════════════════════════════════════════
    SECTION 14 · BOOT
    ═══════════════════════════════════════════════════ */
@@ -6664,22 +6675,34 @@ document.addEventListener('visibilitychange', () => {
 });
 </script>
 
+<!-- رسالة بديلة عند تعطيل JavaScript في المتصفح -->
 <noscript><div style="padding:24px;text-align:center;font-family:sans-serif">يجب تفعيل JavaScript لاستخدام لوحة تحكم Sheep &amp; Burger.</div></noscript>
 <script>
-/* ---- js/15-pwa: لا يوجد Service Worker في هذه النسخة (ملف واحد فقط) ----
-   تنظيف: إذا كان الجهاز مسجّلًا Service Worker قديم من نسخة سابقة (sw.js)،
-   نلغي تسجيله ونمسح كاشه، حتى لا يستمر في تقديم نسخة قديمة من الصفحة. */
+/*
+  MODULE 16 · LEGACY SERVICE WORKER CLEANUP
+  إزالة تسجيل عامل الخدمة القديم المعروف باسم sw.js فقط، إذا كان موجودًا.
+  لا نحذف Cache Storage ولا نلغي تسجيلات Service Worker الأخرى على النطاق.
+*/
 (function cleanupOldServiceWorker() {
-  if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.getRegistrations()
-      .then((regs) => Promise.all(regs.map((r) => r.unregister())))
-      .catch(() => {});
-  }
-  if ('caches' in window) {
-    caches.keys()
-      .then((keys) => Promise.all(keys.map((k) => caches.delete(k))))
-      .catch(() => {});
-  }
+  if (!('serviceWorker' in navigator)) return;
+
+  // لا نلغي أي Service Worker تابع لموقع/تطبيق آخر على نفس النطاق.
+  // نستهدف فقط العامل القديم المعروف باسم sw.js.
+  navigator.serviceWorker.getRegistrations()
+    .then((registrations) => {
+      registrations.forEach((registration) => {
+        const worker = registration.active || registration.waiting || registration.installing;
+        if (!worker || !worker.scriptURL) return;
+
+        try {
+          const scriptPath = new URL(worker.scriptURL, location.href).pathname;
+          if (scriptPath.endsWith('/sw.js')) registration.unregister();
+        } catch (_) {
+          // تجاهل رابط غير صالح دون التأثير على بقية التسجيلات.
+        }
+      });
+    })
+    .catch(() => {});
 })();
 </script>
 </body>
