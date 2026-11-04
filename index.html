@@ -494,6 +494,7 @@ window.addEventListener('unhandledrejection', function () {
       <button class="btn out" id="more-menu" aria-label="المزيد" title="المزيد">⋯</button>
       <button class="btn out" id="theme" aria-label="الوضع الليلي">🌙</button>
     </header>
+    <div id="group-tabs" class="chips" role="tablist" aria-label="صفحات المجموعة" style="margin:0 0 12px;display:none"></div>
     <main id="view" tabindex="-1"></main>
   </div>
 </div>
@@ -587,6 +588,18 @@ const NAV = [
   ['health','💚','حالة النظام',OM],
   ['settings','⚙️','الإعدادات',OM]
 ];
+// ═══ المجموعات: كل الشاشات المرتبطة ببعض في مكان واحد، وكل صفحة فيها تبويب داخل المجموعة ═══
+const GROUPS = [
+  ['menu', '🍽️', 'المنيو', ['menu', 'addon-groups', 'badges', 'recommendations']],
+  ['offers', '🎁', 'العروض والكوبونات', ['offers', 'coupons', 'reward-prizes', 'loyalty']],
+  ['home', '🧱', 'الواجهة الرئيسية', ['homepage', 'home-controls']],
+  ['branches', '🏪', 'الفروع', ['branches', 'branch-pricing']],
+  ['customers', '👥', 'العملاء', ['customers', 'reviews', 'notifications']],
+  ['ops', '🛵', 'التشغيل والتقارير', ['drivers', 'refunds', 'reports']],
+  ['settings', '⚙️', 'الإعدادات', ['settings', 'app-content', 'staff', 'sessions', 'audit', 'health', 'delete-center']]
+];
+const groupOf = id => GROUPS.find(g => g[3].includes(id)) || null;
+const canPage = id => { const n = NAV.find(x => x[0] === id); return !!n && can(n[3]); };
 const ST = {
   pending:{l:'جديد',n:'تأكيد',next:'confirmed',by:[...OM,'cashier']},
   confirmed:{l:'مؤكد',n:'تحضير',next:'preparing',by:[...OM,'cashier']},
@@ -1167,8 +1180,14 @@ async function enter(user) {
     $('login').classList.add('hidden');
     $('shell').classList.remove('hidden');
     $('who').textContent = `${ME.name} — ${ROLES[ME.role]}`;
-    $('nav').innerHTML = NAV.filter(n => can(n[3]))
-      .map(n => `<button data-p="${n[0]}" class="${n[0] === 'delete-center' ? 'nav-delete-center' : ''}">${n[1]} ${n[2]}<b class="hide" data-badge></b></button>`).join('');
+    {
+  const grouped = new Set(GROUPS.flatMap(g => g[3]));
+  const topHtml = NAV.filter(n => !grouped.has(n[0]) && can(n[3]))
+    .map(n => `<button data-p="${n[0]}">${n[1]} ${n[2]}<b class="hide" data-badge></b></button>`);
+  const groupHtml = GROUPS.filter(g => g[3].some(canPage))
+    .map(g => `<button data-g="${g[0]}">${g[1]} ${g[2]}</button>`);
+  $('nav').innerHTML = [...topHtml, ...groupHtml].join('');
+}
 
     await Promise.all([loadDrivers(), loadSettings(), loadOrders(), loadCancelReasons(), loadLoyalty()]);
     startRealtime();
@@ -1198,10 +1217,16 @@ async function loadDrivers() {
   const r = await safeQuery(() => sb.from('drivers').select('*').order('full_name'), []);
   DRV = r.data || [];
 }
+// صفوف هوية المطعم في app_content (group_key = brand): tagline (العنوان الفرعي) و meta_description (وصف الموقع)
+let BRAND_ROW = null, BRAND_META_ROW = null;
 async function loadSettings() {
   const r = await safeQuery(() => sb.from('store_settings').select('*').eq('id', CONFIG.SETTINGS_ROW_ID).maybeSingle(), null);
   SETTINGS = r.data;
   setOpen(r.data?.is_open ?? true);
+  const br = await safeQuery(() => sb.from('app_content').select('*').eq('group_key', 'brand'), []);
+  const brandRows = Array.isArray(br?.data) ? br.data : [];
+  BRAND_ROW = brandRows.find(x => x.item_key === 'tagline') || null;
+  BRAND_META_ROW = brandRows.find(x => x.item_key === 'meta_description') || null;
 }
 async function loadLoyalty() {
   const r = await safeQuery(() => sb.from('store_settings').select('loyalty_enabled,loyalty_points_per_currency,loyalty_redeem_points,loyalty_redeem_value,loyalty_stamps_for_reward,loyalty_stamp_reward_item_id').eq('id', CONFIG.SETTINGS_ROW_ID).maybeSingle(), null);
@@ -1209,12 +1234,9 @@ async function loadLoyalty() {
   LOYALTY = { is_active: x.loyalty_enabled, points_per_egp: x.loyalty_points_per_currency, stamps_for_reward: x.loyalty_stamps_for_reward, reward_value: x.loyalty_redeem_value, redeem_points: x.loyalty_redeem_points, stamp_reward_item_id: x.loyalty_stamp_reward_item_id };
 }
 async function loadCancelReasons() {
-  // The live schema has no cancel_reasons table; keep safe local choices.
-  CANCEL_REASONS = [
-    { label:'طلب العميل الإلغاء' }, { label:'تأخير غير مقبول' },
-    { label:'صنف غير متوفر' }, { label:'عنوان غير صحيح' },
-    { label:'مشكلة دفع' }, { label:'أخرى' }
-  ];
+  // أسباب الإلغاء تُدار من محتوى التطبيق (app_content، group_key = cancel_reason)
+  const r = await safeQuery(() => sb.from('app_content').select('label_ar,sort_order').eq('group_key', 'cancel_reason').eq('is_active', true).order('sort_order'), []);
+  CANCEL_REASONS = (Array.isArray(r?.data) ? r.data : []).map(x => ({ label: x.label_ar })).filter(x => x.label);
 }
 async function loadOrders() {
   const r = await safeQuery(() => sb.from('orders')
@@ -1248,6 +1270,8 @@ function go(id) {
     else b.removeAttribute('aria-current');
   });
 
+  renderGroupTabs(id);
+  $('nav').querySelectorAll('button[data-g]').forEach(b => b.classList.toggle('on', !!groupOf(id) && b.dataset.g === groupOf(id)[0]));
   const v = $('view');
   v.innerHTML = '<div class="sk"></div><div class="sk"></div><div class="sk"></div>';
   chartRenderFns.length = 0;
@@ -1258,7 +1282,26 @@ function go(id) {
     v.innerHTML = `<div class="empty">حصل خطأ <button class="btn out sm" onclick="location.reload()">إعادة المحاولة</button></div>`;
   });
 }
-$('nav').onclick = e => { const b = e.target.closest('[data-p]'); if (b) go(b.dataset.p); };
+$('nav').onclick = e => {
+  const b = e.target.closest('[data-p]');
+  if (b) { go(b.dataset.p); return; }
+  const g = e.target.closest('[data-g]');
+  if (g) { const grp = GROUPS.find(x => x[0] === g.dataset.g); const first = grp && grp[3].find(canPage); if (first) go(first); }
+};
+// تبويبات المجموعة: كل صفحة في المجموعة الحالية
+function renderGroupTabs(id) {
+  const box = $('group-tabs');
+  if (!box) return;
+  const grp = groupOf(id);
+  const pages = grp ? grp[3].filter(canPage) : [];
+  if (pages.length <= 1) { box.style.display = 'none'; box.innerHTML = ''; return; }
+  box.innerHTML = pages.map(p => {
+    const n = NAV.find(x => x[0] === p);
+    return `<button type="button" class="chip ${p === id ? 'on' : ''}" data-gp="${p}" role="tab" aria-selected="${p === id}">${n[1]} ${n[2]}</button>`;
+  }).join('');
+  box.style.display = 'flex';
+}
+$('group-tabs').onclick = e => { const b = e.target.closest('[data-gp]'); if (b) go(b.dataset.gp); };
 $('burger').onclick = () => { $('side').classList.add('open'); $('side-bg').style.display = 'block'; };
 $('side-bg').onclick = () => { $('side').classList.remove('open'); $('side-bg').style.display = ''; };
 
@@ -1858,7 +1901,7 @@ VIEWS.dashboard = async v => {
       <div class="stat clickable" onclick="document.querySelector('[data-p=orders]').click()">
         <small>متوسط الطلب</small><b data-s="avg" data-m="1">0</b>
       </div>
-      <div class="stat clickable" onclick="document.querySelector('[data-p=drivers]').click()">
+      <div class="stat clickable" onclick="go('drivers')">
         <small>سائقين نشطين</small><b data-s="drv">0</b>
       </div>
       <div class="stat">
@@ -2144,7 +2187,7 @@ function openMenuForm(m) {
     const selAllerg = new Set(m?.allergens || []);
     const selAddon = new Set((itemAddons.data || []).map(a => a.addon_id));
     const selBadge = new Set();
-    const sizesList = (sizes.data || []).map(z => ({name_ar:z.label_ar, price:Number(z.price)}));
+    const sizesList = (sizes.data || []).map(z => ({name_ar:z.label_ar, price:Number(z.price), sale: z.sale_price != null ? Number(z.sale_price) : null}));
     if (!sizesList.length) sizesList.push({name_ar:'عادي',price:0});
 
     openModal(`
@@ -2224,9 +2267,10 @@ function openMenuForm(m) {
     const sizesList_el = $('sizes-list');
     const renderSizes = () => {
       sizesList_el.innerHTML = $('mod')._sizes.map((s, i) => `
-        <div style="display:grid;grid-template-columns:minmax(0,1fr) 100px 40px;gap:6px;margin-top:6px">
+        <div style="display:grid;grid-template-columns:minmax(0,1fr) 90px 90px 40px;gap:6px;margin-top:6px">
           <input data-size-name="${i}" placeholder="اسم الحجم (مثال: عادي أو كبير)" title="اكتب اسم الحجم الذي سيختاره العميل" value="${esc(s.name_ar || '')}" maxlength="40">
           <input data-size-price="${i}" type="number" inputmode="decimal" min="0" step="0.01" placeholder="السعر بالجنيه" title="سعر هذا الحجم بالجنيه المصري" value="${Number.isFinite(Number(s.price)) && Number(s.price) > 0 ? Number(s.price) : ''}">
+          <input data-size-sale="${i}" type="number" inputmode="decimal" min="0" step="0.01" placeholder="سعر البيع" title="اختياري: سعر العرض لهذا الحجم. يظهر في شريط عروض السيل ولازم يكون أقل من السعر" value="${s.sale != null && Number(s.sale) > 0 ? Number(s.sale) : ''}">
           <button type="button" class="btn out sm dng" data-size-remove="${i}" aria-label="حذف الحجم">✕</button>
         </div>
       `).join('') || '<span style="color:var(--ink2);font-size:12px">لا توجد أحجام بعد — اضغط «+ حجم» لإضافة حجم</span>';
@@ -2243,6 +2287,12 @@ function openMenuForm(m) {
           if ($('mod')._sizes[i]) $('mod')._sizes[i].price = parseNumber(e.currentTarget.value);
         });
       });
+      sizesList_el.querySelectorAll('[data-size-sale]').forEach(input => {
+        input.addEventListener('input', e => {
+          const i = Number(e.currentTarget.dataset.sizeSale);
+          if ($('mod')._sizes[i]) $('mod')._sizes[i].sale = e.currentTarget.value === '' ? null : parseNumber(e.currentTarget.value);
+        });
+      });
       sizesList_el.querySelectorAll('[data-size-remove]').forEach(button => {
         button.addEventListener('click', e => {
           const i = Number(e.currentTarget.dataset.sizeRemove);
@@ -2254,7 +2304,7 @@ function openMenuForm(m) {
     $('mod')._sizes = sizesList.map(s => ({...s}));
     $('mod')._renderSizes = renderSizes;
     renderSizes();
-    $('add-size').onclick = () => { $('mod')._sizes.push({ name_ar:'', price:0 }); renderSizes(); };
+    $('add-size').onclick = () => { $('mod')._sizes.push({ name_ar:'', price:0, sale:null }); renderSizes(); };
 
     $('m_save').onclick = async () => {
       const ar = $('m_ar').value.trim();
@@ -2263,6 +2313,15 @@ function openMenuForm(m) {
 
       const validSizes = ($('mod')._sizes || []).filter(x => x.name_ar && Number(x.price) > 0).map(x => ({ name_ar: x.name_ar, price: Number(x.price) }));
       if (!validSizes.length) { toast('أضف حجمًا واحدًا على الأقل بسعر أكبر من صفر', 'err'); return; }
+      // سعر البيع اختياري لكل حجم، ولازم يكون أكبر من صفر وأقل من السعر
+      const saleByLabel = new Map();
+      for (const x of ($('mod')._sizes || [])) {
+        if (!x.name_ar || Number(x.price) <= 0) continue;
+        const sale = x.sale == null || x.sale === '' ? null : Number(x.sale);
+        if (sale === null) { saleByLabel.set(x.name_ar.trim(), null); continue; }
+        if (!Number.isFinite(sale) || sale <= 0 || sale >= Number(x.price)) { toast(`سعر البيع للحجم «${x.name_ar}» لازم يكون أكبر من صفر وأقل من سعره`, 'err'); return; }
+        saleByLabel.set(x.name_ar.trim(), sale);
+      }
       const payload = {
         name_ar: ar,
         description_ar: $('m_desc').value.trim() || null,
@@ -2297,6 +2356,16 @@ function openMenuForm(m) {
           p_item: itemId, p_allergens: null, p_addons: pick('addon'), p_badges: null, p_sizes: validSizes
         });
         if (rel.error) throw rel.error;
+        // الدالة الجاهزة لا تحفظ سعر البيع، فنحدّثه مباشرة على كل حجم
+        const savedSizes = await sb.from('item_sizes').select('id,label_ar,sale_price').eq('item_id', itemId);
+        if (savedSizes.error) throw savedSizes.error;
+        for (const z of (savedSizes.data || [])) {
+          const want = saleByLabel.has(z.label_ar) ? saleByLabel.get(z.label_ar) : null;
+          const current = z.sale_price == null ? null : Number(z.sale_price);
+          if (want === current) continue;
+          const up = await sb.from('item_sizes').update({ sale_price: want }).eq('id', z.id).select('id').single();
+          if (up.error) throw up.error;
+        }
         closeModal(); toast('تم الحفظ', 'ok'); go('menu');
       } catch (e) { const msg=String(e?.message||e||''); if (/SECRET_ITEM_PROMOTION_CONFLICT|PROMOTION_SECRET_ITEM_CONFLICT|SECRET_CODE_ITEM_NOT_ELIGIBLE|23514/i.test(msg)) { toast('لا يمكن تخصيص المنتج للكود السري لأنه مرتبط بعرض نشط. أوقف العرض أولًا أو اختر منتجًا آخر.', 'err'); } else { shake($('mod')); fail(e); } }
     };
@@ -5576,6 +5645,10 @@ function hpAnnouncementEditor(row, ordered, lookups, v) {
   openModal(`<h2>${isNew ? 'إعلان جديد' : 'تعديل الإعلان'} <button class="close" onclick="closeModal()" aria-label="إغلاق">✕</button></h2>
     <label>العنوان (اختياري)</label><input id="han_title" maxlength="80" value="${esc(r.title_ar || '')}">
     <label>نص الإعلان *</label><textarea id="han_msg" maxlength="300">${esc(r.message_ar || '')}</textarea>
+    <label>صورة الإعلان (اختياري)</label>
+    <input id="han_img" dir="ltr" placeholder="https://..." value="${esc(r.image_url || '')}">
+    <input type="file" id="han_file" accept="image/png,image/jpeg,image/webp" style="margin-top:6px;max-width:100%">
+    <div id="han_up" style="font-size:12px;color:var(--ink2);margin-top:4px">الإعلان اللي فيه صورة بيظهر في شريط الصفحة الرئيسية.</div>
     <label>الموضع *</label>
     <select id="han_pl">${Object.entries(HP_ANN_PLACEMENTS).map(([k, l]) => `<option value="${k}" ${r.placement === k ? 'selected' : ''}>${l}</option>`).join('')}</select>
     <label>نوع الوجهة</label>
@@ -5600,6 +5673,26 @@ function hpAnnouncementEditor(row, ordered, lookups, v) {
   syncTarget();
   $('han_ttype').onchange = syncTarget;
 
+  // رفع صورة الإعلان إلى bucket menu-images (نفس نمط البانرات)
+  $('han_file').onchange = async e => {
+    const f = e.target.files && e.target.files[0];
+    if (!f) return;
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(f.type)) return toast('نوع الملف غير مدعوم. استخدم JPG أو PNG أو WEBP', 'err');
+    if (f.size > 5 * 1024 * 1024) return toast('حجم الصورة يتجاوز 5 ميجابايت', 'err');
+    const ext = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' }[f.type];
+    const path = `announcements/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+    $('han_up').textContent = '⏳ جاري رفع الصورة...';
+    try {
+      const up = await sb.storage.from('menu-images').upload(path, f, { contentType: f.type, upsert: false });
+      if (up.error) throw up.error;
+      const url = sb.storage.from('menu-images').getPublicUrl(path)?.data?.publicUrl;
+      if (!url || !hpIsHttps(url)) throw new Error('تعذر الحصول على رابط عام للصورة');
+      $('han_img').value = url;
+      $('han_up').textContent = '✅ تم رفع الصورة';
+    } catch (err) { $('han_up').textContent = ''; fail(err, hpErrMsg(err)); }
+    finally { e.target.value = ''; }
+  };
+
   $('han_save').onclick = async () => {
     const btn = $('han_save');
     const msg = $('han_msg').value.trim();
@@ -5611,6 +5704,8 @@ function hpAnnouncementEditor(row, ordered, lookups, v) {
     if (type !== 'none' && !$('han_tid').value) return toast('اختر الهدف المرتبط بالإعلان', 'err');
     if (type === 'none' && url && !hpIsHttps(url)) return toast('الرابط يجب أن يبدأ بـ https://', 'err');
     if (!hpIsHex(bg) || !hpIsHex(fg)) return toast('الألوان يجب أن تكون بصيغة #RRGGBB', 'err');
+    const img = $('han_img').value.trim();
+    if (img && !hpIsHttps(img)) return toast('رابط الصورة يجب أن يبدأ بـ https://', 'err');
     if (start === 'INVALID' || end === 'INVALID') return toast('تاريخ غير صالح', 'err');
     if (start && end && new Date(end) <= new Date(start)) return toast('نهاية العرض يجب أن تكون بعد البداية', 'err');
     const payload = {
@@ -5623,6 +5718,7 @@ function hpAnnouncementEditor(row, ordered, lookups, v) {
       background_color: bg || null, text_color: fg || null,
       is_dismissible: $('han_dis').checked,
       is_active: $('han_active').checked,
+      image_url: img || null,
       starts_at: start, ends_at: end
     };
     btn.disabled = true; btn.textContent = '⏳ حفظ...';
@@ -5814,9 +5910,25 @@ VIEWS.settings = async v => {
           <div class="toggle"><span>يستقبل طلبات</span><input type="checkbox" id="s_accept" ${s.accepting_orders !== false ? 'checked' : ''}></div>
         </div>
         <div class="set-card"><h3>📞 بيانات المطعم</h3>
-          <label>الاسم</label><input id="s_name" value="${esc(s.name_ar || 'شيب برجر')}">
+          <label>الاسم</label><input id="s_name" value="${esc(s.name_ar || '')}">
           <label>الهاتف</label><input id="s_phone" dir="ltr" value="${esc(s.contact_phone || '')}">
           <label>العنوان</label><input id="s_addr" value="${esc(s.address_text || '')}">
+          <label>العنوان الفرعي (تحت اسم المطعم) <small>فاضي = مايظهرش</small></label><input id="s_tagline" value="${esc(BRAND_ROW?.label_ar ?? '')}">
+          <label>وصف الموقع (للبحث ومشاركة الروابط)</label><textarea id="s_meta" maxlength="300">${esc(BRAND_META_ROW?.label_ar || '')}</textarea>
+          <label>لون العنوان الفرعي</label>
+          <div style="display:flex;gap:10px;align-items:center;margin-bottom:10px">
+            <input type="color" id="s_tagline_color" value="${esc(/^#[0-9a-fA-F]{6}$/.test(BRAND_ROW?.value?.color || '') ? BRAND_ROW.value.color : '#6b5b4b')}" style="width:56px;height:40px;padding:2px">
+            <input id="s_tagline_hex" dir="ltr" placeholder="#6b5b4b" value="${esc(BRAND_ROW?.value?.color || '')}" style="flex:1">
+          </div>
+          <label>خط العرض (Latitude)</label><input id="s_lat" dir="ltr" placeholder="31.2512640" value="${esc(s.latitude ?? '')}">
+          <label>خط الطول (Longitude)</label><input id="s_lng" dir="ltr" placeholder="29.9812960" value="${esc(s.longitude ?? '')}">
+          <label>لوجو المطعم</label>
+          <div style="display:flex;gap:12px;align-items:center;margin-bottom:10px;flex-wrap:wrap">
+            <img id="s_logo_prev" alt="لوجو المطعم" src="${esc(s.logo_url || '')}" style="width:64px;height:64px;object-fit:contain;border-radius:12px;border:1px solid var(--line);background:var(--bg2);${s.logo_url ? '' : 'display:none'}">
+            <input type="file" id="s_logo_file" accept="image/png,image/jpeg,image/webp,image/svg+xml" style="max-width:100%">
+          </div>
+          <div id="s_logo_up" style="font-size:12px;color:var(--ink2);margin-bottom:6px"></div>
+          <label>رابط اللوجو (يُملأ تلقائياً عند الرفع)</label><input id="s_logo_url" dir="ltr" placeholder="https://..." value="${esc(s.logo_url || '')}">
         </div>
       </div>
       <div style="margin-top:18px"><button class="btn pri big" id="s_save_general" style="max-width:300px">💾 حفظ</button></div>
@@ -5939,11 +6051,47 @@ VIEWS.settings = async v => {
     const payload = {
       is_open: $('s_open').checked,
       accepting_orders: $('s_accept').checked,
-      name_ar: $('s_name').value.trim() || 'شيب برجر',
+      name_ar: $('s_name').value.trim(),
       contact_phone: $('s_phone').value.trim() || null,
-      address_text: $('s_addr').value.trim() || null
+      address_text: $('s_addr').value.trim() || null,
+      logo_url: $('s_logo_url').value.trim() || null
     };
+    if (!payload.name_ar) return toast('اسم المطعم مطلوب', 'err');
     await saveSettings(payload, 's_save_general');
+    await saveBrandExtras();
+  };
+
+  // مزامنة اللون مع حقل النص الست عشري والعكس
+  $('s_tagline_color').oninput = () => { $('s_tagline_hex').value = $('s_tagline_color').value; };
+  $('s_tagline_hex').oninput = () => { const v = $('s_tagline_hex').value.trim(); if (/^#[0-9a-fA-F]{6}$/.test(v)) $('s_tagline_color').value = v; };
+
+  // رفع لوجو المطعم إلى bucket menu-images (نفس نمط رفع البانرات) ثم ملء حقل الرابط
+  // الحفظ الفعلي في store_settings.logo_url يتم بزر "حفظ" في نفس البطاقة
+  $('s_logo_file').onchange = async e => {
+    const f = e.target.files && e.target.files[0];
+    if (!f) return;
+    const ext = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/svg+xml': 'svg' }[f.type];
+    if (!ext) return toast('نوع الملف غير مدعوم. استخدم PNG أو JPG أو WEBP أو SVG', 'err');
+    if (f.size > 2 * 1024 * 1024) return toast('حجم اللوجو يتجاوز 2 ميجابايت', 'err');
+    const path = `logo/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+    $('s_logo_up').textContent = '⏳ جاري رفع اللوجو...';
+    try {
+      const up = await sb.storage.from('menu-images').upload(path, f, { contentType: f.type, upsert: false });
+      if (up.error) throw up.error;
+      const url = sb.storage.from('menu-images').getPublicUrl(path)?.data?.publicUrl;
+      if (!url || !hpIsHttps(url)) throw new Error('تعذر الحصول على رابط عام للوجو');
+      $('s_logo_url').value = url;
+      $('s_logo_prev').src = url;
+      $('s_logo_prev').style.display = '';
+      $('s_logo_up').textContent = '✅ تم رفع اللوجو — اضغط حفظ لتطبيقه على الموقع';
+    } catch (err) { $('s_logo_up').textContent = ''; fail(err, 'تعذر رفع اللوجو'); }
+    finally { e.target.value = ''; }
+  };
+  // تحديث المعاينة لو الرابط اتكتب يدوياً
+  $('s_logo_url').oninput = () => {
+    const u = $('s_logo_url').value.trim();
+    $('s_logo_prev').src = u || '';
+    $('s_logo_prev').style.display = u ? '' : 'none';
   };
   $('s_save_delivery').onclick = async () => {
     const payload = {
@@ -6098,6 +6246,35 @@ VIEWS.settings = async v => {
   loadRewardPrizes();
 };
 
+// حفظ العنوان الفرعي ولونه في app_content، وإحداثيات المطعم في store_settings
+async function saveBrandExtras() {
+  const tagline = $('s_tagline').value.trim();
+  const meta = $('s_meta').value.trim();
+  const hex = $('s_tagline_hex').value.trim() || $('s_tagline_color').value;
+  if (!/^#[0-9a-fA-F]{6}$/.test(hex)) return toast('لون العنوان الفرعي لازم يكون بصيغة #RRGGBB', 'err');
+  const latRaw = $('s_lat').value.trim(), lngRaw = $('s_lng').value.trim();
+  const lat = latRaw === '' ? null : Number(latRaw);
+  const lng = lngRaw === '' ? null : Number(lngRaw);
+  if ((lat === null) !== (lng === null)) return toast('لازم تدخل خط العرض وخط الطول مع بعض أو تسيبهم الاتنين فاضيين', 'err');
+  if (lat !== null && (!Number.isFinite(lat) || lat < -90 || lat > 90 || !Number.isFinite(lng) || lng < -180 || lng > 180)) return toast('الإحداثيات خارج النطاق الصحيح', 'err');
+  try {
+    await upsertBrandRow('tagline', tagline, { color: hex }, BRAND_ROW);
+    await upsertBrandRow('meta_description', meta, {}, BRAND_META_ROW);
+    const sr = await sb.from('store_settings').update({ latitude: lat, longitude: lng }).eq('id', CONFIG.SETTINGS_ROW_ID).select('id').single();
+    if (sr.error) throw sr.error;
+    toast('تم حفظ هوية المطعم', 'ok');
+    await loadSettings();
+  } catch (e) { fail(e, 'تعذر حفظ هوية المطعم'); }
+}
+async function upsertBrandRow(itemKey, label, value, existing) {
+  if (existing) {
+    const up = await sb.from('app_content').update({ label_ar: label, value, is_active: true }).eq('group_key', 'brand').eq('item_key', itemKey).select('id').single();
+    if (up.error) throw up.error;
+  } else {
+    const ins = await sb.from('app_content').insert({ group_key: 'brand', item_key: itemKey, label_ar: label, value, sort_order: 0, is_active: true }).select('id').single();
+    if (ins.error) throw ins.error;
+  }
+}
 async function saveSettings(payload, btnId) {
   const btn = $(btnId);
   if (btn) { btn.disabled = true; btn.textContent = '⏳ حفظ...'; }
