@@ -570,7 +570,6 @@ const NAV = [
   ['recommendations','🎯','توصيات المنتجات',OM],
   ['app-content','📝','محتوى التطبيق',OM],
   ['branch-pricing','💲','أسعار الفروع',OM],
-  ['reward-prizes','🎡','جوائز العجلة',OM],
   ['offers','🎁','العروض والخصومات',OM],
   ['home-controls','🎯','الواجهة الرئيسية والمنيو السري',OM],
   ['homepage','🧱','البلوكات والبنرات والإعلانات',OM],
@@ -591,7 +590,7 @@ const NAV = [
 // ═══ المجموعات: كل الشاشات المرتبطة ببعض في مكان واحد، وكل صفحة فيها تبويب داخل المجموعة ═══
 const GROUPS = [
   ['menu', '🍽️', 'المنيو', ['menu', 'addon-groups', 'badges', 'recommendations']],
-  ['offers', '🎁', 'العروض والكوبونات', ['offers', 'coupons', 'reward-prizes', 'loyalty']],
+  ['offers', '🎁', 'العروض والكوبونات', ['offers', 'coupons', 'loyalty']],
   ['home', '🧱', 'الواجهة الرئيسية', ['homepage', 'home-controls']],
   ['branches', '🏪', 'الفروع', ['branches', 'branch-pricing']],
   ['customers', '👥', 'العملاء', ['customers', 'reviews', 'notifications']],
@@ -2712,7 +2711,7 @@ async function openPromotionForm(x) {
   openModal(`<h2>${x?'تعديل':'إضافة'} عرض <button class="close" onclick="closeModal()">✕</button></h2>
     <label>اسم العرض * <small>العنوان الذي يراه العميل في البانر وبطاقة العرض</small></label><input title="اكتب اسمًا واضحًا وقصيرًا يشجع العميل على الطلب" id="of_name" maxlength="100" value="${esc(x?.name_ar||'')}">
     <label>الوصف الذي سيظهر للعميل</label><input id="of_desc" maxlength="500" title="شرح قصير لشروط العرض وفائدته" value="${esc(x?.description_ar||'')}">
-    <label>رابط صورة البانر (HTTPS — اختياري)</label><input id="of_image" dir="ltr" type="url" placeholder="https://..." title="صورة مستقلة للسلايدر؛ إذا تركتها فارغة يستخدم التطبيق صورة المنتج المرتبط" value="${esc(x?.image_url||'')}">
+    ${imgField('of_image', 'صورة البانر (اختياري)', 'offers', x?.image_url)}
     <label>نوع العرض * <small>حدد طريقة استفادة العميل من العرض</small></label><select title="نسبة مئوية أو مبلغ ثابت أو توصيل مجاني أو صنف/إضافة مجانية" id="of_type"><option value="percent">خصم نسبة</option><option value="fixed">خصم مبلغ</option><option value="free_delivery">توصيل مجاني</option><option value="free_item">صنف مجاني</option><option value="free_addon">إضافة مجانية</option></select>
     <label>قيمة الخصم <small>النسبة من 1 إلى 100، أو مبلغ بالجنيه؛ العروض المجانية قيمتها صفر</small></label><input id="of_value" type="number" min="0" step="0.5" value="${x?.value??0}">
     <label>أقصى خصم بالجنيه (اختياري) <small>سقف الخصم عند اختيار نسبة مئوية</small></label><input id="of_max_discount" type="number" min="0" value="${x?.max_discount??''}">
@@ -2906,6 +2905,46 @@ async function laOpen(offerId) {
   };
 }
 
+/* ═══ حقل صورة: زرار رفع من الجهاز بدل خانة الرابط (مستخدم في العروض وغيرها) ═══ */
+function imgPreviewHtml(id, url) {
+  return url
+    ? `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:4px"><img src="${esc(url)}" alt="" style="width:96px;height:64px;object-fit:cover;border-radius:10px;background:var(--bg2)"><button type="button" class="btn out sm" data-imgpick="${id}">📷 تغيير</button><button type="button" class="btn out sm dng" data-imgclear="${id}">🗑️ إزالة</button></div>`
+    : `<div style="margin-top:4px"><button type="button" class="btn out" data-imgpick="${id}">📷 ارفع صورة من الجهاز</button></div>`;
+}
+function imgField(id, label, folder, current) {
+  return `<label>${label}</label>
+    <input type="hidden" id="${id}" value="${esc(current || '')}">
+    <input type="file" data-imgfile="${id}" data-folder="${folder}" accept="image/jpeg,image/png,image/webp" style="display:none">
+    <div id="${id}_box">${imgPreviewHtml(id, current || '')}</div>`;
+}
+document.addEventListener('click', e => {
+  const pick = e.target.closest && e.target.closest('[data-imgpick]');
+  if (pick) { const inp = document.querySelector(`input[data-imgfile="${pick.dataset.imgpick}"]`); if (inp) inp.click(); return; }
+  const clr = e.target.closest && e.target.closest('[data-imgclear]');
+  if (clr) { const id = clr.dataset.imgclear; $(id).value = ''; $(id + '_box').innerHTML = imgPreviewHtml(id, ''); }
+});
+document.addEventListener('change', async e => {
+  const inp = e.target;
+  if (!(inp && inp.matches && inp.matches('input[data-imgfile]'))) return;
+  const id = inp.dataset.imgfile, folder = inp.dataset.folder;
+  const f = inp.files && inp.files[0];
+  inp.value = '';
+  if (!f) return;
+  if (!['image/jpeg', 'image/png', 'image/webp'].includes(f.type)) return toast('نوع الصورة غير مدعوم. استخدم JPG أو PNG أو WEBP', 'err');
+  if (f.size > 5 * 1024 * 1024) return toast('حجم الصورة أكبر من 5 ميجابايت', 'err');
+  const ext = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' }[f.type];
+  const path = `${folder}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+  $(id + '_box').innerHTML = '<small style="color:var(--ink2)">⏳ جاري رفع الصورة...</small>';
+  try {
+    const up = await sb.storage.from('menu-images').upload(path, f, { contentType: f.type, upsert: false });
+    if (up.error) throw up.error;
+    const url = sb.storage.from('menu-images').getPublicUrl(path)?.data?.publicUrl;
+    if (!url) throw new Error('تعذر الحصول على رابط الصورة');
+    $(id).value = url;
+  } catch (err) { fail(err, hpErrMsg(err)); }
+  $(id + '_box').innerHTML = imgPreviewHtml(id, $(id).value);
+});
+
 /* صفحات الحملات: إنشاء وتعديل وتفعيل وإيقاف (بدون حذف لأنها مرتبطة بالعروض) */
 async function laOpenPages() {
   const r = await sb.from('promotion_pages').select('*').order('sort_order');
@@ -2935,6 +2974,38 @@ async function laOpenPages() {
   };
 }
 
+function lpPaintImg(kind) {
+  const url = $('lp_' + kind).value;
+  $('lp_' + kind + '_box').innerHTML = url
+    ? `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><img src="${esc(url)}" alt="" style="width:72px;height:72px;object-fit:cover;border-radius:10px;background:var(--bg2)"><button type="button" class="btn out sm" onclick="lpPick('${kind}')">📷 تغيير</button><button type="button" class="btn out sm dng" onclick="lpClear('${kind}')">🗑️ إزالة</button></div>`
+    : `<button type="button" class="btn out" onclick="lpPick('${kind}')">📷 ارفع صورة من الجهاز</button>`;
+}
+function lpPick(kind) { $('lp_' + kind + '_file').click(); }
+function lpClear(kind) { $('lp_' + kind).value = ''; lpPaintImg(kind); }
+function lpWireUploads() {
+  ['card', 'cover'].forEach(kind => {
+    lpPaintImg(kind);
+    $('lp_' + kind + '_file').onchange = async e => {
+      const f = e.target.files && e.target.files[0];
+      e.target.value = '';
+      if (!f) return;
+      if (!['image/jpeg', 'image/png', 'image/webp'].includes(f.type)) return toast('نوع الصورة غير مدعوم. استخدم JPG أو PNG أو WEBP', 'err');
+      if (f.size > 5 * 1024 * 1024) return toast('حجم الصورة أكبر من 5 ميجابايت', 'err');
+      const ext = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' }[f.type];
+      const path = `promotion-pages/${kind}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+      $('lp_' + kind + '_box').innerHTML = '<small style="color:var(--ink2)">⏳ جاري رفع الصورة...</small>';
+      try {
+        const up = await sb.storage.from('menu-images').upload(path, f, { contentType: f.type, upsert: false });
+        if (up.error) throw up.error;
+        const url = sb.storage.from('menu-images').getPublicUrl(path)?.data?.publicUrl;
+        if (!url) throw new Error('تعذر الحصول على رابط الصورة');
+        $('lp_' + kind).value = url;
+      } catch (err) { fail(err, hpErrMsg(err)); }
+      lpPaintImg(kind);
+    };
+  });
+}
+
 function laPageEditor(p) {
   const isNew = !p;
   const r = p || { slug: '', title_ar: '', subtitle_ar: '', description_ar: '', card_image_url: '', cover_image_url: '', sort_order: 0, is_active: true, starts_at: null, ends_at: null };
@@ -2943,8 +3014,14 @@ function laPageEditor(p) {
     <label>العنوان *</label><input id="lp_title" maxlength="120" value="${esc(r.title_ar)}">
     <label>العنوان الفرعي</label><input id="lp_sub" maxlength="160" value="${esc(r.subtitle_ar || '')}">
     <label>الوصف</label><textarea id="lp_desc" maxlength="600">${esc(r.description_ar || '')}</textarea>
-    <label>صورة البطاقة (https)</label><input id="lp_card" dir="ltr" value="${esc(r.card_image_url || '')}">
-    <label>صورة الغلاف (https)</label><input id="lp_cover" dir="ltr" value="${esc(r.cover_image_url || '')}">
+    <label>صورة البطاقة</label>
+    <input type="hidden" id="lp_card" value="${esc(r.card_image_url || '')}">
+    <input type="file" id="lp_card_file" accept="image/jpeg,image/png,image/webp" style="display:none">
+    <div id="lp_card_box" style="margin-top:4px"></div>
+    <label>صورة الغلاف</label>
+    <input type="hidden" id="lp_cover" value="${esc(r.cover_image_url || '')}">
+    <input type="file" id="lp_cover_file" accept="image/jpeg,image/png,image/webp" style="display:none">
+    <div id="lp_cover_box" style="margin-top:4px"></div>
     <label>ترتيب الظهور</label><input id="lp_order" type="number" value="${r.sort_order}">
     <label>بداية الظهور (اختياري)</label><input id="lp_start" type="datetime-local" value="${hpToLocal(r.starts_at)}">
     <label>نهاية الظهور (اختياري)</label><input id="lp_end" type="datetime-local" value="${hpToLocal(r.ends_at)}">
@@ -2952,6 +3029,7 @@ function laPageEditor(p) {
     <div class="row" style="margin-top:14px"><button class="btn pri big" id="lp_save">💾 حفظ</button>
     <button class="btn out big" onclick="laOpenPages()">رجوع</button></div>`);
 
+  lpWireUploads();
   $('lp_save').onclick = async () => {
     const btn = $('lp_save');
     const slug = $('lp_slug').value.trim().toLowerCase();
@@ -3977,7 +4055,7 @@ VIEWS['reward-prizes'] = async v => {
           <td data-label="الصلاحية">${esc(p.voucher_valid_days)} يوم</td>
           <td data-label="الحالة">${hpBadge(p.is_active ? { l: 'مفعّلة', c: 'var(--ok)' } : { l: 'موقوفة', c: 'var(--ink2)' })}</td>
           <td data-label=""><div class="row" style="gap:6px"><button class="btn out sm" data-rp="edit" data-id="${p.id}">✏️</button>
-          <button class="btn out sm ${p.is_active ? 'wr' : 'ok'}" data-rp="toggle" data-id="${p.id}">${p.is_active ? 'إيقاف' : 'تفعيل'}</button></div></td>
+          <button class="btn out sm ${p.is_active ? 'wr' : 'ok'}" data-rp="toggle" data-id="${p.id}">${p.is_active ? 'إيقاف' : 'تفعيل'}</button><button class="btn out sm dng" data-rp="del" data-id="${p.id}">🗑️ حذف</button></div></td>
         </tr>`).join('')}</tbody></table></div>`}
       </div>`;
     }).join('')}`;
@@ -4039,6 +4117,13 @@ VIEWS['reward-prizes'] = async v => {
     const b = e.target.closest('[data-rp]'); if (!b) return;
     const p = prizes.find(x => x.id === b.dataset.id);
     if (b.dataset.rp === 'edit') return editor(p);
+    if (b.dataset.rp === 'del') {
+      if (!await ask('حذف الجائزة', 'حذف الجائزة نهائيًا؟ سجل المطالبات القديمة هيفضل محفوظ.', 'حذف')) return;
+      const { error } = await sb.rpc('admin_delete_reward_prize', { p_id: b.dataset.id });
+      if (error) return fail(error, hpErrMsg(error));
+      toast('تم حذف الجائزة', 'ok');
+      return VIEWS['reward-prizes'](v);
+    }
     b.disabled = true;
     try {
       const payload = { ...p, is_active: !p.is_active, metadata: p.metadata || {} };
@@ -4160,15 +4245,6 @@ const DC_ENTITIES = {
   achievements: { label: 'إنجازات العملاء', table: 'achievements', cols: 'id,name_ar,achievement_key,is_active', name: r => r.name_ar || r.achievement_key,
     checks: (id, row) => Promise.all([
       dcSafe('إنجازات حصل عليها العملاء', 'user_achievements', { achievement_key: row.achievement_key }, true, 'يوجد سجل إنجازات للعملاء؛ احتفظ بالسجل أو عطّل الإنجاز بدل حذفه.')
-    ]) },
-  rewardPrizes: { label: 'جوائز الولاء', table: 'reward_prizes', cols: 'id,label_ar,is_active', name: r => r.label_ar || 'جائزة بدون اسم',
-    checks: id => Promise.all([
-      dcSafe('مطالبات العملاء بالجائزة', 'reward_claims', { prize_id: id }, true, 'الجائزة مرتبطة بمطالبات عملاء؛ لا تحذف سجلًا استُخدم بالفعل.')
-    ]) },
-  secretCodes: { label: 'أكواد المنيو السري', table: 'secret_menu_codes', cols: 'id,label,is_active,uses_count,max_uses', name: r => r.label || 'كود منيو سري',
-    checks: id => Promise.all([
-      dcSafe('المنتجات المحددة للكود', 'secret_menu_code_items', { code_id: id }, false, 'تحذف روابط المنتجات مع الكود'),
-      dcSafe('عمليات إصدار مكافآت مرتبطة', 'secret_menu_reward_issuances', { code_id: id }, true, 'يوجد سجل إصدار مكافآت؛ لا تحذف الكود حتى لا تفقد سجل العملاء.')
     ]) },
   customerRestrictions: { label: 'قيود وحظر العملاء', table: 'customer_restrictions', cols: 'id,customer_phone,reason,is_blocked', name: r => `${r.customer_phone || 'عميل'} · ${r.reason || (r.is_blocked ? 'محظور' : 'قيد')}`, checks: async () => [] },
   adminNotifications: { label: 'إشعارات الإدارة', table: 'admin_notifications', cols: 'id,title,body,created_at', name: r => r.title || r.body || 'إشعار إداري', checks: async () => [] },
@@ -4849,7 +4925,7 @@ VIEWS.secret = async v => {
         <td data-label="الكود"><b dir="ltr">${esc(s.label || '—')}</b></td>
         <td data-label="الاستخدام">${s.uses_count || 0}${s.max_uses ? ' / '+s.max_uses : ''}</td>
         <td data-label="الحالة">${!s.is_active ? '⛔ متوقف' : (s.expires_at&&new Date(s.expires_at)<new Date() ? '⏰ منتهي' : (s.max_uses!=null&&Number(s.uses_count||0)>=Number(s.max_uses) ? '⚠️ اكتمل الاستخدام' : '✅ نشط'))}</td>
-        <td data-label=""><button class="btn out ${s.is_active ? 'dng' : 'ok'} sm" data-a="tg">${s.is_active ? 'إيقاف' : 'تشغيل'}</button></td>
+        <td data-label=""><button class="btn out ${s.is_active ? 'dng' : 'ok'} sm" data-a="tg">${s.is_active ? 'إيقاف' : 'تشغيل'}</button> ${can(OM) ? '<button class="btn out dng sm" data-a="del">🗑️ حذف</button>' : ''}</td>
       </tr>`).join('')}</tbody></table>${renderPager(p, 'secret')}`
       : '<div class="empty">مفيش أكواد</div>'}`;
   if ($('adds')) $('adds').onclick = () => {
@@ -4877,7 +4953,14 @@ VIEWS.secret = async v => {
     const cur = data.find(x => x.id === id);
     try { await callAdmin({ action: 'toggle_secret_menu_code', code_id: id, is_active: !cur.is_active }); }
     catch (e) { return fail(e); }
-    toast('تم', 'ok', 1500); go('home-controls');
+    toast('تم', 'ok', 1500); VIEWS.secret(v);
+  });
+  v.querySelectorAll('[data-a="del"]').forEach(b => b.onclick = async () => {
+    const id = b.closest('tr').dataset.id;
+    if (!await ask('حذف الكود', 'حذف الكود السري نهائيًا؟ الأصناف المرتبطة به هتتفصل، وسجل المكافآت اللي اتصرفت بيه هيتمسح.', 'حذف')) return;
+    const { error } = await sb.rpc('admin_delete_secret_code', { p_code: id });
+    if (error) return fail(error, hpErrMsg(error));
+    toast('تم حذف الكود', 'ok'); VIEWS.secret(v);
   });
   v.querySelectorAll('[data-page]').forEach(b => b.onclick = () => { pageIdx['secret'] = Number(b.dataset.page); go('secret'); });
 };
@@ -5165,7 +5248,7 @@ const HP_BLOCK_TYPES = {
   text_promo:'نص ترويجي', category_grid:'شبكة تصنيفات', product_grid:'شبكة منتجات', promotion_cards:'بطاقات عروض'
 };
 const HP_LAYOUTS = { text:'نص', grid:'شبكة', cards:'بطاقات', carousel:'شريط متحرك', banner:'بانر' };
-const HP_ITEM_TYPES = { product:'منتج', category:'تصنيف', promotion:'عرض' };
+const HP_ITEM_TYPES = { product:'منتج', category:'تصنيف', promotion:'عرض', promotion_page:'صفحة حملة (بطاقة تفتح شاشة فيها عروض)' };
 const HP_BANNER_TARGETS = { url:'رابط خارجي', product:'منتج', category:'تصنيف', promotion:'عرض' };
 const HP_ANN_PLACEMENTS = { top:'أعلى الصفحة', below_hero:'أسفل الواجهة', between_blocks:'بين البلوكات', above_footer:'أعلى الفوتر' };
 const HP_ANN_TARGETS = { none:'بدون وجهة', category:'تصنيف', promotion:'عرض' };
@@ -5244,14 +5327,18 @@ async function hpMove(table, rows, id, dir) {
 
 /* ---------- تحميل البيانات من Supabase ---------- */
 async function hpLoadLookups() {
-  const [items, cats, promos] = await Promise.all([
-    sb.from('menu_items').select('id,name_ar').order('name_ar'),
+  const [items, cats, promos, pages, badges] = await Promise.all([
+    sb.from('menu_items').select('id,name_ar,image_url').order('name_ar'),
     sb.from('categories').select('id,name_ar').order('name_ar'),
-    sb.from('menu_promotions').select('id,name_ar').order('name_ar')
+    sb.from('menu_promotions').select('id,name_ar').order('name_ar'),
+    sb.from('promotion_pages').select('id,title_ar,card_image_url').order('sort_order'),
+    sb.from('display_badges').select('id,label_ar,icon,text_color,background_color,is_active,priority').order('priority')
   ]);
   for (const r of [items, cats, promos]) if (r.error) throw r.error;
   return {
-    product: items.data || [], category: cats.data || [], promotion: promos.data || []
+    product: items.data || [], category: cats.data || [], promotion: promos.data || [],
+    promotion_page: pages.error ? [] : (pages.data || []).map(x => ({ id: x.id, name_ar: x.title_ar, image_url: x.card_image_url })),
+    badge: badges.error ? [] : (badges.data || []).map(x => ({ ...x, name_ar: x.label_ar }))
   };
 }
 function hpNameOf(lookups, type, id) {
@@ -5262,13 +5349,15 @@ function hpNameOf(lookups, type, id) {
 async function hpLoadBlocks() {
   const [b, it] = await Promise.all([
     sb.from('homepage_blocks').select('*').order('sort_order'),
-    sb.from('homepage_block_items').select('id,block_id')
+    sb.from('homepage_block_items').select('id,block_id,item_type,target_id,image_override_url,sort_order,is_active')
   ]);
   if (b.error) throw b.error;
   if (it.error) throw it.error;
   const counts = {};
   (it.data || []).forEach(x => { counts[x.block_id] = (counts[x.block_id] || 0) + 1; });
-  return { rows: b.data || [], counts };
+  const itemsBy = {};
+  (it.data || []).forEach(x => { (itemsBy[x.block_id] = itemsBy[x.block_id] || []).push(x); });
+  return { rows: b.data || [], counts, itemsBy };
 }
 async function hpLoadTable(table) {
   const r = await sb.from(table).select('*').order('sort_order');
@@ -5307,40 +5396,71 @@ async function hpRenderTab(body, v) {
 
 /* ═══════════ البلوكات ═══════════ */
 async function hpRenderBlocks(body, v) {
-  const [{ rows, counts }, lookups] = await Promise.all([hpLoadBlocks(), hpLoadLookups()]);
+  const [{ rows, counts, itemsBy }, lookups] = await Promise.all([hpLoadBlocks(), hpLoadLookups()]);
   const ordered = hpByOrder(rows);
   const visible = hpApplyFilter('blocks', ordered);
+  const thumb = (src, size = 48) => src
+    ? `<img src="${esc(src)}" alt="" loading="lazy" style="width:${size}px;height:${size}px;object-fit:cover;border-radius:10px;flex-shrink:0;background:var(--bg2)">`
+    : `<span style="width:${size}px;height:${size}px;border-radius:10px;flex-shrink:0;background:var(--bg2);display:inline-flex;align-items:center;justify-content:center;font-size:${Math.round(size * 0.42)}px">🧱</span>`;
+  const itemInfo = it => {
+    const found = (lookups[it.item_type] || []).find(x => x.id === it.target_id);
+    const img = it.image_override_url || (found && found.image_url) || null;
+    return { name: found ? found.name_ar : '(غير موجود)', img, missing: !found, type: HP_ITEM_TYPES[it.item_type] || it.item_type, active: it.is_active };
+  };
+  const chip = (style, inner) => `<span style="display:inline-flex;align-items:center;gap:6px;padding:2px 8px 2px 2px;border:1px solid var(--line);border-radius:999px;font-size:12px;background:var(--sf);${style}">${inner}</span>`;
+  const cardOf = b => {
+    const st = hpStatus(b);
+    const pos = ordered.findIndex(x => x.id === b.id);
+    const canMove = hpState.filter.blocks === 'all';
+    const items = hpByOrder(itemsBy[b.id] || []).map(itemInfo);
+    const cover = b.image_url || (items.find(i => i.img) || {}).img || null;
+    const missing = items.filter(i => i.missing).length;
+    const bId = (b.settings || {}).badge_id;
+    const bd = bId ? (lookups.badge || []).find(x => x.id === bId) : null;
+    const badgeChip = bd
+      ? `<span style="display:inline-block;padding:2px 10px;border-radius:999px;font-weight:700;font-size:12px;color:${esc(bd.text_color || '#000')};background:${esc(bd.background_color || '#eee')}">${esc(bd.icon ? bd.icon + ' ' : '')}${esc(bd.label_ar)}</span>`
+      : (bId ? '<span class="pay-badge" style="color:var(--err)">شارة محذوفة</span>' : '');
+    const preview = items.slice(0, 4).map(i => chip(i.missing ? 'border-color:var(--err);color:var(--err)' : (i.active ? '' : 'opacity:.6'), `${thumb(i.img, 24)}<span>${esc(i.name)}</span>`)).join('')
+      + (items.length > 4 ? `<span style="font-size:12px;color:var(--ink2);align-self:center">+${items.length - 4}</span>` : '');
+    return `<div class="set-card" style="margin-bottom:10px">
+      <div style="display:flex;gap:12px;align-items:flex-start">
+        ${thumb(cover, 56)}
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;align-items:center">
+            <b>${esc(b.title_ar || '(بدون عنوان)')}</b>
+            <span style="display:flex;gap:6px;align-items:center">${hpBadge(st)}<small style="color:var(--ink2)">ترتيب ${b.sort_order}</small></span>
+          </div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;margin:6px 0">
+            <span class="pay-badge">${esc(HP_BLOCK_TYPES[b.block_type] || b.block_type)}</span>
+            <span class="pay-badge">${esc(HP_LAYOUTS[b.layout_type] || b.layout_type)}</span>
+            <span class="pay-badge">${counts[b.id] || 0} عنصر</span>
+            ${badgeChip}
+          </div>
+          ${b.subtitle_ar ? `<div style="font-size:12px;margin-bottom:6px;color:var(--ink2)">${esc(b.subtitle_ar)}</div>` : ''}
+          ${items.length === 0 ? '<div style="font-size:12px;color:var(--warn)">⚠️ البلوك فاضي، ما فيش عناصر بتظهر فيه</div>' : ''}
+          ${missing ? `<div style="font-size:12px;color:var(--err)">⚠️ ${missing} عنصر مربوط بحاجة مش موجودة</div>` : ''}
+          <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">${preview}</div>
+          <div style="font-size:11px;color:var(--ink2);margin-top:6px">أُنشئ: ${dt(b.created_at)} · عُدّل: ${dt(b.updated_at)}</div>
+        </div>
+      </div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px">
+        ${canMove ? `<button class="btn out sm" data-act="up" data-id="${b.id}" ${pos === 0 ? 'disabled' : ''} aria-label="تحريك لأعلى">↑</button>
+        <button class="btn out sm" data-act="down" data-id="${b.id}" ${pos === ordered.length - 1 ? 'disabled' : ''} aria-label="تحريك لأسفل">↓</button>` : ''}
+        <button class="btn out sm" data-act="items" data-id="${b.id}">🧩 العناصر (${counts[b.id] || 0})</button>
+        <button class="btn out sm" data-act="edit" data-id="${b.id}">✏️ تعديل</button>
+        <button class="btn out sm ${b.is_active ? 'wr' : 'ok'}" data-act="toggle" data-id="${b.id}">${b.is_active ? 'إيقاف' : 'تفعيل'}</button>
+        <button class="btn out sm dng" data-act="delete" data-id="${b.id}">🗑️ حذف</button>
+      </div>
+    </div>`;
+  };
   body.innerHTML = `
-    <div class="row" style="margin-bottom:12px"><button class="btn pri" id="hp-block-add">+ بلوك جديد</button></div>
+    <div class="row" style="margin-bottom:12px;gap:8px;flex-wrap:wrap"><button class="btn pri" id="hp-block-add">+ بلوك جديد</button><button class="btn out" id="hp-pages-btn">📄 صفحات الحملات</button></div>
     ${hpFilterBar('blocks')}
     <div class="table-wrap">
-      ${visible.length === 0 ? '<div class="empty">لا توجد بلوكات مطابقة في قاعدة البيانات</div>' : visible.map((b, idx) => {
-        const st = hpStatus(b);
-        const canMove = hpState.filter.blocks === 'all';
-        const pos = ordered.findIndex(x => x.id === b.id);
-        return `<div class="set-card" style="margin-bottom:10px">
-          <div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;align-items:center">
-            <div><b>${esc(b.title_ar || '(بدون عنوان)')}</b> ${hpBadge(st)}</div>
-            <small style="color:var(--ink2)">ترتيب: ${b.sort_order}</small>
-          </div>
-          <div style="font-size:12px;color:var(--ink2);margin:6px 0">
-            النوع: ${esc(HP_BLOCK_TYPES[b.block_type] || b.block_type)} · العرض: ${esc(HP_LAYOUTS[b.layout_type] || b.layout_type)} · العناصر: ${counts[b.id] || 0}
-          </div>
-          ${b.subtitle_ar ? `<div style="font-size:12px;margin-bottom:6px">${esc(b.subtitle_ar)}</div>` : ''}
-          <div style="font-size:11px;color:var(--ink2)">أُنشئ: ${dt(b.created_at)} · عُدّل: ${dt(b.updated_at)}</div>
-          <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px">
-            ${canMove ? `<button class="btn out sm" data-act="up" data-id="${b.id}" ${pos === 0 ? 'disabled' : ''} aria-label="تحريك لأعلى">↑</button>
-            <button class="btn out sm" data-act="down" data-id="${b.id}" ${pos === ordered.length - 1 ? 'disabled' : ''} aria-label="تحريك لأسفل">↓</button>` : ''}
-            <button class="btn out sm" data-act="items" data-id="${b.id}">🧩 العناصر (${counts[b.id] || 0})</button>
-            <button class="btn out sm" data-act="edit" data-id="${b.id}">✏️ تعديل</button>
-            <button class="btn out sm ${b.is_active ? 'wr' : 'ok'}" data-act="toggle" data-id="${b.id}">${b.is_active ? 'إيقاف' : 'تفعيل'}</button>
-            <button class="btn out sm dng" data-act="delete" data-id="${b.id}">🗑️ حذف</button>
-          </div>
-        </div>`;
-      }).join('')}
+      ${visible.length === 0 ? '<div class="empty">لا توجد بلوكات مطابقة في قاعدة البيانات</div>' : visible.map(cardOf).join('')}
     </div>`;
-
   $('hp-block-add').onclick = () => hpBlockEditor(null, ordered, lookups, v);
+  $('hp-pages-btn').onclick = () => laOpenPages();
   body.querySelector('[data-hp-filter]').onchange = e => { hpState.filter.blocks = e.target.value; VIEWS.homepage(v); };
 
   body.onclick = async e => {
@@ -5378,11 +5498,24 @@ async function hpRenderBlocks(body, v) {
 function hpBlockEditor(row, ordered, lookups, v) {
   const isNew = !row;
   const r = row || { block_type: 'product_grid', layout_type: 'grid', is_active: true, title_ar: '', subtitle_ar: '', starts_at: null, ends_at: null, background_color: '', text_color: '', accent_color: '' };
+  const curBadge = (r.settings || {}).badge_id || '';
+  const others = ordered.filter(x => !row || x.id !== row.id);
+  const prevBlock = row ? others.filter(x => x.sort_order <= row.sort_order).pop() : null;
+  const defaultPos = isNew ? 'last' : (prevBlock ? 'after:' + prevBlock.id : 'first');
+  const badgeOpts = `<option value="">بدون شارة</option>` + (lookups.badge || []).map(x => `<option value="${x.id}" ${x.id === curBadge ? 'selected' : ''}>${esc((x.icon ? x.icon + ' ' : '') + x.label_ar)}${x.is_active ? '' : ' (موقوفة)'}</option>`).join('');
+  const posOpts = `<option value="first" ${defaultPos === 'first' ? 'selected' : ''}>أول الصفحة</option>`
+    + others.map(x => `<option value="after:${x.id}" ${defaultPos === 'after:' + x.id ? 'selected' : ''}>بعد: ${esc(x.title_ar || '(بدون عنوان)')}</option>`).join('')
+    + `<option value="last" ${defaultPos === 'last' ? 'selected' : ''}>آخر الصفحة</option>`;
   openModal(`<h2>${isNew ? 'بلوك جديد' : 'تعديل البلوك'} <button class="close" onclick="closeModal()" aria-label="إغلاق">✕</button></h2>
     <label>نوع البلوك *</label>
     <select id="hb_type">${Object.entries(HP_BLOCK_TYPES).map(([k, l]) => `<option value="${k}" ${r.block_type === k ? 'selected' : ''}>${l}</option>`).join('')}</select>
     <label>طريقة العرض *</label>
     <select id="hb_layout">${Object.entries(HP_LAYOUTS).map(([k, l]) => `<option value="${k}" ${r.layout_type === k ? 'selected' : ''}>${l}</option>`).join('')}</select>
+    <label>شارة البلوك (اختياري)</label>
+    <select id="hb_badge">${badgeOpts}</select>
+    ${(lookups.badge || []).length ? '' : '<small style="display:block;color:var(--ink2);margin-top:4px">ما فيش شارات معرّفة بعد في جدول الشارات.</small>'}
+    <label>مكان الظهور في الصفحة</label>
+    <select id="hb_pos">${posOpts}</select>
     <label>العنوان</label><input id="hb_title" maxlength="120" value="${esc(r.title_ar || '')}">
     <label>الوصف</label><textarea id="hb_sub" maxlength="300">${esc(r.subtitle_ar || '')}</textarea>
     <label>بداية الظهور (اختياري)</label><input id="hb_start" type="datetime-local" value="${hpToLocal(r.starts_at)}">
@@ -5410,11 +5543,27 @@ function hpBlockEditor(row, ordered, lookups, v) {
       background_color: bg || null, text_color: fg || null, accent_color: ac || null,
       is_active: $('hb_active').checked
     };
+    const pos = $('hb_pos').value;
+    const ref = pos.startsWith('after:') ? others.find(x => x.id === pos.slice(6)) : null;
+    const refIdx = ref ? others.indexOf(ref) : -1;
+    const nextBlock = refIdx >= 0 ? others[refIdx + 1] : null;
+    if (pos === 'first') payload.sort_order = others.length ? others[0].sort_order - 5 : 10;
+    else if (pos === 'last') payload.sort_order = others.length ? others[others.length - 1].sort_order + 10 : 10;
+    else if (ref) payload.sort_order = nextBlock ? ref.sort_order + 1 : ref.sort_order + 10;
+    const settings = { ...((row && row.settings) || {}) };
+    const chosenBadge = (lookups.badge || []).find(x => x.id === $('hb_badge').value);
+    if (chosenBadge) {
+      settings.badge_id = chosenBadge.id;
+      settings.badge_text = ((chosenBadge.icon ? chosenBadge.icon + ' ' : '') + chosenBadge.label_ar).slice(0, 40);
+    } else if (settings.badge_id) {
+      delete settings.badge_id; delete settings.badge_text;
+    }
+    payload.settings = settings;
     btn.disabled = true; btn.textContent = '⏳ حفظ...';
     try {
       if (isNew) {
         const maxOrder = ordered.reduce((m, x) => Math.max(m, x.sort_order || 0), 0);
-        const ins = await sb.from('homepage_blocks').insert({ ...payload, sort_order: maxOrder + 10 }).select('id').single();
+        const ins = await sb.from('homepage_blocks').insert({ ...payload }).select('id').single();
         if (ins.error) throw ins.error;
         if (!ins.data?.id) throw new Error('لم يؤكد الخادم إنشاء البلوك');
       } else {
@@ -5826,21 +5975,10 @@ VIEWS['home-controls'] = async v => {
   const activePromoRows = promoLookup.error ? [] : (promoLookup.data || []).filter(p => (!p.ends_at || new Date(p.ends_at) > new Date()) && (p.max_uses == null || Number(p.used_count || 0) < Number(p.max_uses)));
   const secretConflictIds = new Set(activePromoRows.flatMap(p => [p.target_item_id, p.reward_item_id]).filter(Boolean));
   const hasSecretConflict = id => secretConflictIds.has(id);
-  const chefItems = products.filter(x => x.is_available && !x.is_secret && !hasSecretConflict(x.id));
   v.innerHTML = `
     <div class="set-card" style="margin-bottom:16px">
       <h3>🎯 تحكم موحّد في الصفحة الرئيسية</h3>
-      <p style="font-size:13px;line-height:1.9;color:var(--ink2);margin:0">من هنا تتحكم في اختيار الشيف، والفلاتر وعلامات الأصناف التي تظهر في الصفحة الرئيسية، والمنيو السري وأكواد فتحه. مكافأة الكود التلقائية: 4 طلبات مستلمة، كل طلب بقيمة 200 جنيه أو أكثر. المنتج السري لا يمكن استخدامه في عرض نشط والعكس. إدارة العروض في شاشة «العروض والخصومات» المستقلة، ورسوم التوصيل وحد التوصيل المجاني في «إعدادات المطعم».</p>
-    </div>
-    <div class="set-grid" style="margin-bottom:18px">
-      <div class="set-card">
-        <h3>👨‍🍳 اختيار الشيف</h3>
-        <p style="font-size:12px;color:var(--ink2);line-height:1.8">اختار صنفًا واحدًا يظهر في الصفحة الرئيسية مع الخصم. اختر «إخفاء القسم» إذا مش عايز تعرضه.</p>
-        <label>الصنف المختار</label>
-        <select id="hc_chef_item"><option value="">— إخفاء قسم اختيار الشيف —</option>${chefItems.map(it=>`<option value="${it.id}">${esc(it.name_ar)}</option>`).join('')}</select>
-        <label>نسبة الخصم (%)</label><input id="hc_chef_discount" type="number" min="1" max="99" step="1" value="${Math.round(Number(s.chef_special_discount ?? 0.25)*100)}">
-        <button class="btn pri big" id="hc_save_chef" style="margin-top:12px">💾 حفظ اختيار الشيف</button>
-      </div>
+      <p style="font-size:13px;line-height:1.9;color:var(--ink2);margin:0">من هنا تتحكم في الفلاتر وعلامات الأصناف التي تظهر في الصفحة الرئيسية، والمنيو السري وأكواد فتحه. مكافأة الكود التلقائية: 4 طلبات مستلمة، كل طلب بقيمة 200 جنيه أو أكثر. المنتج السري لا يمكن استخدامه في عرض نشط والعكس. إدارة العروض في شاشة «العروض والخصومات» المستقلة، ورسوم التوصيل وحد التوصيل المجاني في «إعدادات المطعم».</p>
     </div>
     <div class="set-card" style="margin-bottom:18px">
       <h3>👁️ الفلاتر الظاهرة للعميل</h3>
@@ -5880,12 +6018,6 @@ VIEWS['home-controls'] = async v => {
     </div>
 `;
 
-  $('hc_chef_item').value = s.chef_special_item_id || '';
-  $('hc_save_chef').onclick = async () => {
-    const pct = parseNumber($('hc_chef_discount').value);
-    if ($('hc_chef_item').value && !(pct >= 1 && pct <= 99)) return toast('نسبة الخصم لازم تكون من 1 إلى 99', 'err');
-    await saveSettings({ chef_special_item_id: $('hc_chef_item').value || null, chef_special_discount: (pct >= 1 && pct <= 99 ? pct : 25) / 100 }, 'hc_save_chef');
-  };
   $('hc_save_filters').onclick = async () => {
     await saveSettings({
       show_popular_filter: $('hc_show_popular').checked,
@@ -5965,6 +6097,108 @@ VIEWS['home-controls'] = async v => {
   await renderSecretCodes();
 };
 
+async function renderLoyaltyControls(host) {
+  await loadLoyalty();
+  const l = LOYALTY || {};
+  host.innerHTML = `
+      <div class="set-grid">
+        <div class="set-card"><h3>⭐ نقاط المكافآت</h3>
+          <div class="toggle"><span>نظام النقاط مفعّل</span><input type="checkbox" id="l_active" ${l.is_active !== false ? 'checked' : ''}></div>
+          <label>النقاط لكل جنيه مصري</label><input id="l_pts" type="number" step="0.1" min="0.1" max="100" value="${l.points_per_egp ?? 1}">
+          <label>عدد النقاط المطلوبة للاستبدال</label><input id="l_redeem_points" type="number" min="1" value="${l.redeem_points ?? 100}">
+          <label>قيمة المكافأة بالجنيه</label><input id="l_reward" type="number" min="0.01" step="0.01" value="${l.reward_value ?? 5}">
+          <button class="btn pri big" id="s_save_loyalty" style="margin-top:12px;max-width:300px">💾 حفظ إعدادات النقاط</button>
+        </div>
+        <div class="set-card"><h3>🍔 كارت الولاء</h3>
+          <p style="color:var(--ink2);font-size:13px;margin:0 0 10px">يتحكم في عدد الأختام اللازمة للحصول على مكافأة كارت الولاء.</p>
+          <label>عدد الأختام المطلوبة للمكافأة</label><input id="l_stamps" type="number" min="2" max="100" value="${l.stamps_for_reward ?? 10}">
+          <label>الصنف المجاني عند اكتمال الكارت</label><select id="l_stamp_item"><option value="">— اختر صنفًا من المنيو —</option></select>
+          <p style="font-size:12px;color:var(--ink2);margin:6px 0">يُمنح العميل قسيمة للصنف المختار بعد تسليم الطلب الذي يكمل عدد الأختام. يجب أن يكون الصنف متاحًا وغير مخفي.</p>
+          <div style="margin-top:12px"><button class="btn out big" id="s_save_stamp" style="max-width:300px">💾 حفظ إعدادات كارت الولاء</button></div>
+        </div>
+        <div class="set-card" style="grid-column:1/-1"><h3>🏆 إدارة الإنجازات وشارات العملاء</h3>
+          <p style="color:var(--ink2);font-size:13px;margin:0 0 12px">أضف إنجازات أو عدّل شروطها. التحقق يتم تلقائيًا عند تسليم الطلب، ولا يُمنح الإنجاز نفسه للعميل مرتين. مفتاح الإنجاز تقني بالإنجليزية ويظل ثابتًا بعد الإنشاء.</p>
+          <div class="row" style="justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px">
+            <span id="ach-status" style="color:var(--ink2);font-size:12px">جاري تحميل الإنجازات...</span>
+            <button class="btn pri" id="ach-add">➕ إضافة إنجاز</button>
+          </div>
+          <div id="ach-editor" class="set-card hidden" style="margin-bottom:14px;background:var(--surface2)">
+            <h3 id="ach-editor-title">إضافة إنجاز</h3>
+            <input id="ach-id" type="hidden">
+            <div class="set-grid">
+              <div><label>المفتاح التقني (إنجليزي)</label><input id="ach-key" placeholder="مثال: burger_fan" maxlength="60" pattern="[a-z][a-z0-9_]{2,59}"><small style="color:var(--ink2)">حروف إنجليزية صغيرة وأرقام وشرطة سفلية فقط، ويبدأ بحرف.</small></div>
+              <div><label>اسم الإنجاز بالعربي</label><input id="ach-name" maxlength="80" placeholder="مثال: عاشق البرجر"></div>
+              <div><label>الأيقونة أو الإيموجي</label><input id="ach-icon" maxlength="12" value="🏆"></div>
+              <div><label>شرط الحصول على الإنجاز</label><select id="ach-condition"><option value="first_order">أول طلب مكتمل</option><option value="delivered_orders">عدد الطلبات المكتملة</option><option value="total_spend">إجمالي المشتريات بالجنيه</option><option value="burger_quantity">عدد قطع البرجر</option><option value="vegetarian_orders">عدد الطلبات التي تحتوي صنفًا نباتيًا</option><option value="night_order">طلب ليلي (10 مساءً إلى 5 صباحًا)</option><option value="secret_item">طلب صنف من القائمة السرية</option><option value="all_spicy_items">تجربة كل الأصناف الحارة المتاحة</option></select></div>
+              <div><label>الحد المطلوب للشرط الرقمي</label><input id="ach-threshold" type="number" min="1" step="1" value="10"><small style="color:var(--ink2)">يُتجاهل في شروط الطلب الليلي والقائمة السرية وتجربة كل الحار.</small></div>
+              <div><label>نقاط إضافية عند فتح الإنجاز</label><input id="ach-points" type="number" min="0" step="1" value="0"><small style="color:var(--ink2)">تُضاف مرة واحدة لسجل الولاء إذا كان نظام النقاط مفعّلًا.</small></div>
+              <div><label>ترتيب العرض</label><input id="ach-sort" type="number" step="1" value="10"></div>
+              <div><label>الوصف الظاهر للعميل</label><input id="ach-description" maxlength="300" placeholder="اشرح للعميل كيف يفتح الإنجاز"></div>
+            </div>
+            <div class="row" style="gap:8px;flex-wrap:wrap;margin-top:12px"><button class="btn pri" id="ach-save">💾 حفظ الإنجاز</button><button class="btn out" id="ach-cancel">إلغاء</button></div>
+          </div>
+          <div id="ach-list"><div class="empty">جاري التحميل...</div></div>
+          <div style="margin-top:22px"><h3>👥 سجل الإنجازات التي حصل عليها العملاء</h3><p style="font-size:12px;color:var(--ink2)">يعرض اسم العميل وتاريخ حصوله على الإنجاز. السجل السابق لا يُحذف عند إيقاف الإنجاز.</p><div id="ach-earned-list"><div class="empty">جاري تحميل السجل...</div></div></div>
+        </div>
+      </div>
+  `;
+  $('s_save_loyalty').onclick = async () => {
+    const pts = parseNumber($('l_pts').value), redeemPts = parseNumber($('l_redeem_points').value), rewardValue = parseNumber($('l_reward').value);
+    if (!(pts > 0 && pts <= 100 && redeemPts >= 1 && rewardValue > 0)) return toast('راجع قيم النقاط والمكافأة', 'err');
+    await saveLoyalty({ loyalty_enabled: $('l_active').checked, loyalty_points_per_currency: pts, loyalty_redeem_points: Math.trunc(redeemPts), loyalty_redeem_value: rewardValue }, 's_save_loyalty');
+  };
+  const loadStampRewardItems = async () => {
+    const select = $('l_stamp_item'); if (!select) return;
+    const { data, error } = await sb.from('menu_items').select('id,name_ar,is_available,is_secret').eq('is_available', true).eq('is_secret', false).order('name_ar');
+    if (error) { select.innerHTML = '<option value="">تعذر تحميل أصناف المنيو</option>'; return; }
+    select.innerHTML = '<option value="">— بدون مكافأة صنف مجانية —</option>' + (data || []).map(x => `<option value="${x.id}" ${x.id === l.stamp_reward_item_id ? 'selected' : ''}>${esc(x.name_ar)}</option>`).join('');
+  };
+  loadStampRewardItems();
+  $('s_save_stamp').onclick = async () => {
+    const stamps = Math.trunc(parseNumber($('l_stamps').value));
+    if (!(stamps >= 2 && stamps <= 100)) return toast('عدد الأختام يجب أن يكون من 2 إلى 100', 'err');
+    const itemId = $('l_stamp_item').value || null;
+    await saveLoyalty({ loyalty_stamps_for_reward: stamps, loyalty_stamp_reward_item_id: itemId }, 's_save_stamp');
+  };
+
+  // Achievement management: backed by public.achievements and customer delivery trigger.
+  const achConditions = {first_order:'أول طلب مكتمل',delivered_orders:'عدد الطلبات المكتملة',total_spend:'إجمالي المشتريات',burger_quantity:'عدد قطع البرجر',vegetarian_orders:'طلبات الأصناف النباتية',night_order:'طلب ليلي',secret_item:'صنف من القائمة السرية',all_spicy_items:'كل الأصناف الحارة'};
+  let achRows = [];
+  const achEscape = x => String(x ?? '').replace(/[&<>\"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#39;'}[c]));
+  const resetAchForm = () => { ['ach-id','ach-key','ach-name','ach-description'].forEach(id=>$(id).value=''); $('ach-key').disabled=false; $('ach-icon').value='🏆'; $('ach-condition').value='delivered_orders'; $('ach-threshold').value='10'; $('ach-points').value='0'; $('ach-sort').value=String((achRows.length+1)*10); $('ach-editor-title').textContent='إضافة إنجاز'; $('ach-editor').classList.remove('hidden'); };
+  const loadAchievements = async () => {
+    const host=$('ach-list'), status=$('ach-status'); if(!host) return;
+    host.innerHTML='<div class="empty">جاري تحميل الإنجازات...</div>';
+    const {data,error}=await sb.from('achievements').select('*').order('sort_order').order('created_at');
+    if(error){host.innerHTML=`<div class="empty">تعذر تحميل الإنجازات: ${achEscape(error.message)}</div>`; if(status)status.textContent='خطأ في التحميل'; return;}
+    achRows=data||[]; if(status)status.textContent=`إجمالي ${achRows.length} إنجاز — ${achRows.filter(x=>x.is_active).length} مفعّل`;
+    host.innerHTML=achRows.length?`<div style="overflow:auto"><table class="data-table" style="width:100%"><thead><tr><th>الإنجاز</th><th>الشرط</th><th>المطلوب</th><th>نقاط إضافية</th><th>الحالة</th><th>إجراءات</th></tr></thead><tbody>${achRows.map(a=>`<tr><td><b>${achEscape(a.icon)} ${achEscape(a.name_ar)}</b><div style="font-size:11px;color:var(--ink2)">${achEscape(a.achievement_key)}</div><div style="font-size:11px;color:var(--ink2)">${achEscape(a.description_ar)}</div></td><td>${achEscape(achConditions[a.condition_type]||a.condition_type)}</td><td>${['night_order','secret_item','all_spicy_items','first_order'].includes(a.condition_type)?'تحقق الشرط':achEscape(a.threshold)+(a.condition_type==='total_spend'?' ج.م':'')}</td><td>${achEscape(a.reward_points)}</td><td>${a.is_active?'مفعّل':'متوقف'}</td><td><div class="row" style="gap:5px;flex-wrap:wrap"><button class="btn out sm" data-ach-edit="${a.id}">تعديل</button><button class="btn out sm" data-ach-toggle="${a.id}">${a.is_active?'إيقاف':'تفعيل'}</button><button class="btn out sm" data-ach-delete="${a.id}" style="color:var(--err)">حذف</button></div></td></tr>`).join('')}</tbody></table></div>`:'<div class="empty">لا توجد إنجازات. اضغط إضافة إنجاز للبدء.</div>';
+    host.querySelectorAll('[data-ach-edit]').forEach(b=>b.onclick=()=>{const a=achRows.find(x=>x.id===b.dataset.achEdit); if(!a)return; $('ach-id').value=a.id; $('ach-key').value=a.achievement_key; $('ach-key').disabled=true; $('ach-name').value=a.name_ar; $('ach-description').value=a.description_ar||''; $('ach-icon').value=a.icon||'🏆'; $('ach-condition').value=a.condition_type; $('ach-threshold').value=a.threshold; $('ach-points').value=a.reward_points||0; $('ach-sort').value=a.sort_order||0; $('ach-editor-title').textContent='تعديل الإنجاز'; $('ach-editor').classList.remove('hidden'); $('ach-editor').scrollIntoView({behavior:'smooth',block:'center'});});
+    host.querySelectorAll('[data-ach-toggle]').forEach(b=>b.onclick=async()=>{const a=achRows.find(x=>x.id===b.dataset.achToggle);if(!a)return;const {error}=await sb.from('achievements').update({is_active:!a.is_active,updated_at:new Date().toISOString()}).eq('id',a.id);if(error)return fail(error,'تعذر تغيير حالة الإنجاز');toast(a.is_active?'تم إيقاف الإنجاز':'تم تفعيل الإنجاز','ok');if(!a.is_active){const rr=await sb.rpc('recalculate_customer_achievements');if(rr.error)console.warn('[Achievements] recalc failed',rr.error);}await loadAchievements();await loadEarnedAchievements();});
+    host.querySelectorAll('[data-ach-delete]').forEach(b=>b.onclick=async()=>{const a=achRows.find(x=>x.id===b.dataset.achDelete);if(!a||!confirm(`حذف إعداد الإنجاز «${a.name_ar}»؟ سجل العملاء السابق سيظل محفوظًا.`))return;const {error}=await sb.from('achievements').delete().eq('id',a.id);if(error)return fail(error,'تعذر حذف الإنجاز');toast('تم حذف إعداد الإنجاز','ok');await loadAchievements();await loadEarnedAchievements();});
+  };
+  const loadEarnedAchievements = async () => {
+    const host=$('ach-earned-list');if(!host)return;
+    const [earnedRes,profilesRes]=await Promise.all([sb.from('user_achievements').select('id,user_id,achievement_key,metadata,unlocked_at').order('unlocked_at',{ascending:false}).limit(300),sb.from('profiles').select('id,full_name,phone')]);
+    if(earnedRes.error){host.innerHTML=`<div class="empty">تعذر تحميل السجل: ${achEscape(earnedRes.error.message)}</div>`;return;}
+    const names=new Map((profilesRes.data||[]).map(p=>[p.id,p]));
+    host.innerHTML=(earnedRes.data||[]).length?`<div style="overflow:auto;max-height:440px"><table class="data-table" style="width:100%"><thead><tr><th>العميل</th><th>الإنجاز</th><th>تاريخ الحصول</th></tr></thead><tbody>${earnedRes.data.map(e=>{const p=names.get(e.user_id)||{};const a=achRows.find(x=>x.achievement_key===e.achievement_key);return `<tr><td>${achEscape(p.full_name||'عميل بدون اسم')}<div style="font-size:11px;color:var(--ink2)">${achEscape(p.phone||'')}</div></td><td>${achEscape(a?.icon||'🏆')} ${achEscape(a?.name_ar||e.achievement_key)}</td><td>${achEscape(dtFull(e.unlocked_at))}</td></tr>`}).join('')}</tbody></table></div>`:'<div class="empty">لم يحصل أي عميل على إنجاز بعد.</div>';
+  };
+  $('ach-add').onclick=resetAchForm; $('ach-cancel').onclick=()=>{$('ach-editor').classList.add('hidden');resetAchForm();$('ach-editor').classList.add('hidden');};
+  $('ach-save').onclick=async()=>{
+    const id=$('ach-id').value, key=$('ach-key').value.trim(), name=$('ach-name').value.trim(), desc=$('ach-description').value.trim(), icon=$('ach-icon').value.trim()||'🏆', condition=$('ach-condition').value, threshold=parseNumber($('ach-threshold').value), points=parseNumber($('ach-points').value), sort=parseNumber($('ach-sort').value);
+    if(!id&&!/^[a-z][a-z0-9_]{2,59}$/.test(key))return toast('اكتب مفتاحًا إنجليزيًا صحيحًا من 3 إلى 60 حرفًا','err');
+    if(!name)return toast('اكتب اسم الإنجاز بالعربي','err');
+    if(!(['night_order','secret_item','all_spicy_items','first_order'].includes(condition))&&!(threshold>0))return toast('قيمة الشرط يجب أن تكون أكبر من صفر','err');
+    if(!(points>=0&&Number.isInteger(points)))return toast('النقاط الإضافية يجب أن تكون صفرًا أو عددًا صحيحًا','err');
+    const payload={achievement_key:key,name_ar:name,description_ar:desc,icon,condition_type:condition,threshold:threshold>0?threshold:1,reward_points:points,is_active:true,sort_order:Number.isFinite(sort)?sort:0,updated_at:new Date().toISOString()};
+    const {achievement_key:unusedKey,is_active:unusedActive,...updatePayload}=payload; const {error}=id?await sb.from('achievements').update(updatePayload).eq('id',id):await sb.from('achievements').insert(payload);
+    if(error)return fail(error,'تعذر حفظ الإنجاز');
+    toast('تم حفظ الإنجاز','ok');$('ach-editor').classList.add('hidden');const rr=await sb.rpc('recalculate_customer_achievements');if(rr.error)toast('تم حفظ الإنجاز، لكن تعذرت إعادة فحص العملاء الحاليين. سيُحتسب عند تسليم طلب جديد.','err',5000);await loadAchievements();await loadEarnedAchievements();
+  };
+  await loadAchievements(); await loadEarnedAchievements();
+}
+
 VIEWS.settings = async v => {
   await Promise.all([loadSettings(), loadLoyalty()]);
   const s = SETTINGS || {};
@@ -5975,9 +6209,7 @@ VIEWS.settings = async v => {
       <button class="on" data-tab="general">عام</button>
       <button data-tab="delivery">التوصيل</button>
       <button data-tab="menu-display">واجهة المنيو</button>
-      <button data-tab="chef-special">اختيار الشيف</button>
       <button data-tab="payments">الدفع</button>
-      <button data-tab="loyalty">النقاط والولاء والمكافآت</button>
     </div>
     <div data-panel="general">
       <div class="set-grid">
@@ -6033,17 +6265,6 @@ VIEWS.settings = async v => {
         <button class="btn pri big" id="s_save_menu_display" style="margin-top:14px;max-width:300px">💾 حفظ إعدادات واجهة المنيو</button>
       </div>
     </div>
-    <div data-panel="chef-special" class="hidden">
-      <div class="set-card">
-        <h3>👨‍🍳 اختيار الشيف في الصفحة الرئيسية</h3>
-        <p style="font-size:13px;color:var(--ink2);line-height:1.9">اختار المنتج الذي سيظهر في قسم «اختيار الشيف» بتطبيق العميل، وحدد نسبة الخصم. اترك المنتج على «بدون اختيار» لإخفاء القسم. الخصم يُطبّق عند إضافة المنتج من بطاقة اختيار الشيف.</p>
-        <label>المنتج المختار للشيف</label>
-        <select id="s_chef_item"><option value="">— بدون اختيار (إخفاء القسم) —</option></select>
-        <label>نسبة الخصم (%)</label><input id="s_chef_discount" type="number" min="1" max="99" step="1" value="${Math.round(Number(s.chef_special_discount ?? 0.25)*100)}">
-        <p style="font-size:12px;color:var(--ink2);line-height:1.8">اختار منتجًا عاديًا متاحًا، وليس صنفًا سريًا. مثال: 25 يعني خصم 25%.</p>
-        <button class="btn pri big" id="s_save_chef" style="margin-top:12px;max-width:300px">💾 حفظ اختيار الشيف</button>
-      </div>
-    </div>
     <div data-panel="payments" class="hidden">
       <div class="set-card"><h3>💳 طرق الدفع</h3>
         <div class="chips" style="margin-top:8px">
@@ -6056,56 +6277,6 @@ VIEWS.settings = async v => {
         <p style="font-size:12.5px;color:var(--ink2);margin-top:10px">تطبيق العميل يقبل الدفع عند الاستلام فقط حاليًا. تعطيل الكاش يوقف استقبال الطلبات من التطبيق.</p>
       </div>
       <div style="margin-top:18px"><button class="btn pri big" id="s_save_payments" style="max-width:300px">💾 حفظ</button></div>
-    </div>
-    <div data-panel="loyalty" class="hidden">
-      <div class="set-grid">
-        <div class="set-card"><h3>⭐ نقاط المكافآت</h3>
-          <div class="toggle"><span>نظام النقاط مفعّل</span><input type="checkbox" id="l_active" ${l.is_active !== false ? 'checked' : ''}></div>
-          <label>النقاط لكل جنيه مصري</label><input id="l_pts" type="number" step="0.1" min="0.1" max="100" value="${l.points_per_egp ?? 1}">
-          <label>عدد النقاط المطلوبة للاستبدال</label><input id="l_redeem_points" type="number" min="1" value="${l.redeem_points ?? 100}">
-          <label>قيمة المكافأة بالجنيه</label><input id="l_reward" type="number" min="0.01" step="0.01" value="${l.reward_value ?? 5}">
-          <button class="btn pri big" id="s_save_loyalty" style="margin-top:12px;max-width:300px">💾 حفظ إعدادات النقاط</button>
-        </div>
-        <div class="set-card"><h3>🍔 كارت الولاء</h3>
-          <p style="color:var(--ink2);font-size:13px;margin:0 0 10px">يتحكم في عدد الأختام اللازمة للحصول على مكافأة كارت الولاء.</p>
-          <label>عدد الأختام المطلوبة للمكافأة</label><input id="l_stamps" type="number" min="2" max="100" value="${l.stamps_for_reward ?? 10}">
-          <label>الصنف المجاني عند اكتمال الكارت</label><select id="l_stamp_item"><option value="">— اختر صنفًا من المنيو —</option></select>
-          <p style="font-size:12px;color:var(--ink2);margin:6px 0">يُمنح العميل قسيمة للصنف المختار بعد تسليم الطلب الذي يكمل عدد الأختام. يجب أن يكون الصنف متاحًا وغير مخفي.</p>
-          <div style="margin-top:12px"><button class="btn out big" id="s_save_stamp" style="max-width:300px">💾 حفظ إعدادات كارت الولاء</button></div>
-        </div>
-        <div class="set-card" style="grid-column:1/-1"><h3>🏆 إدارة الإنجازات وشارات العملاء</h3>
-          <p style="color:var(--ink2);font-size:13px;margin:0 0 12px">أضف إنجازات أو عدّل شروطها. التحقق يتم تلقائيًا عند تسليم الطلب، ولا يُمنح الإنجاز نفسه للعميل مرتين. مفتاح الإنجاز تقني بالإنجليزية ويظل ثابتًا بعد الإنشاء.</p>
-          <div class="row" style="justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px">
-            <span id="ach-status" style="color:var(--ink2);font-size:12px">جاري تحميل الإنجازات...</span>
-            <button class="btn pri" id="ach-add">➕ إضافة إنجاز</button>
-          </div>
-          <div id="ach-editor" class="set-card hidden" style="margin-bottom:14px;background:var(--surface2)">
-            <h3 id="ach-editor-title">إضافة إنجاز</h3>
-            <input id="ach-id" type="hidden">
-            <div class="set-grid">
-              <div><label>المفتاح التقني (إنجليزي)</label><input id="ach-key" placeholder="مثال: burger_fan" maxlength="60" pattern="[a-z][a-z0-9_]{2,59}"><small style="color:var(--ink2)">حروف إنجليزية صغيرة وأرقام وشرطة سفلية فقط، ويبدأ بحرف.</small></div>
-              <div><label>اسم الإنجاز بالعربي</label><input id="ach-name" maxlength="80" placeholder="مثال: عاشق البرجر"></div>
-              <div><label>الأيقونة أو الإيموجي</label><input id="ach-icon" maxlength="12" value="🏆"></div>
-              <div><label>شرط الحصول على الإنجاز</label><select id="ach-condition"><option value="first_order">أول طلب مكتمل</option><option value="delivered_orders">عدد الطلبات المكتملة</option><option value="total_spend">إجمالي المشتريات بالجنيه</option><option value="burger_quantity">عدد قطع البرجر</option><option value="vegetarian_orders">عدد الطلبات التي تحتوي صنفًا نباتيًا</option><option value="night_order">طلب ليلي (10 مساءً إلى 5 صباحًا)</option><option value="secret_item">طلب صنف من القائمة السرية</option><option value="all_spicy_items">تجربة كل الأصناف الحارة المتاحة</option></select></div>
-              <div><label>الحد المطلوب للشرط الرقمي</label><input id="ach-threshold" type="number" min="1" step="1" value="10"><small style="color:var(--ink2)">يُتجاهل في شروط الطلب الليلي والقائمة السرية وتجربة كل الحار.</small></div>
-              <div><label>نقاط إضافية عند فتح الإنجاز</label><input id="ach-points" type="number" min="0" step="1" value="0"><small style="color:var(--ink2)">تُضاف مرة واحدة لسجل الولاء إذا كان نظام النقاط مفعّلًا.</small></div>
-              <div><label>ترتيب العرض</label><input id="ach-sort" type="number" step="1" value="10"></div>
-              <div><label>الوصف الظاهر للعميل</label><input id="ach-description" maxlength="300" placeholder="اشرح للعميل كيف يفتح الإنجاز"></div>
-            </div>
-            <div class="row" style="gap:8px;flex-wrap:wrap;margin-top:12px"><button class="btn pri" id="ach-save">💾 حفظ الإنجاز</button><button class="btn out" id="ach-cancel">إلغاء</button></div>
-          </div>
-          <div id="ach-list"><div class="empty">جاري التحميل...</div></div>
-          <div style="margin-top:22px"><h3>👥 سجل الإنجازات التي حصل عليها العملاء</h3><p style="font-size:12px;color:var(--ink2)">يعرض اسم العميل وتاريخ حصوله على الإنجاز. السجل السابق لا يُحذف عند إيقاف الإنجاز.</p><div id="ach-earned-list"><div class="empty">جاري تحميل السجل...</div></div></div>
-        </div>
-        <div class="set-card" style="grid-column:1/-1"><h3>🎁 مكافآتي — إدارة الجوائز</h3>
-          <p style="color:var(--ink2);font-size:13px;margin:0 0 12px">إدارة الجوائز المتاحة في عجلة الحظ وكشط البطاقة. التعديلات هنا تُحفظ في جدول الجوائز في Supabase.</p>
-          <div class="row" style="margin-bottom:12px;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
-            <span id="reward-prizes-status" style="color:var(--ink2);font-size:12px">جاري تحميل الجوائز...</span>
-            <button class="btn pri" id="reward-prize-add">➕ إضافة جائزة</button>
-          </div>
-          <div id="reward-prizes-list"><div class="empty">جاري التحميل...</div></div>
-        </div>
-      </div>
     </div>
   `;
 
@@ -6186,22 +6357,6 @@ VIEWS.settings = async v => {
     };
     await saveSettings(payload, 's_save_menu_display');
   };
-  // تحميل الأصناف المتاحة لاختيار الشيف
-  const chefSelect = $('s_chef_item');
-  if (chefSelect) {
-    const { data: chefItems, error: chefItemsError } = await sb.from('menu_items').select('id,name_ar,is_secret,is_available').eq('is_available', true).eq('is_secret', false).order('name_ar');
-    if (chefItemsError) toast('تعذر تحميل المنتجات لاختيار الشيف', 'err');
-    (chefItems || []).forEach(it => chefSelect.add(new Option(it.name_ar, it.id)));
-    chefSelect.value = s.chef_special_item_id || '';
-  }
-  $('s_save_chef').onclick = async () => {
-    const discountPct = parseNumber($('s_chef_discount').value);
-    if (chefSelect.value && !(discountPct >= 1 && discountPct <= 99)) return toast('اكتب خصمًا من 1 إلى 99 بالمئة', 'err');
-    await saveSettings({
-      chef_special_item_id: chefSelect.value || null,
-      chef_special_discount: (discountPct >= 1 && discountPct <= 99 ? discountPct : 25) / 100
-    }, 's_save_chef');
-  };
   $('s_save_payments').onclick = async () => {
     const payload = {};
     ['cash','visa','wallet'].forEach(k => {
@@ -6210,61 +6365,6 @@ VIEWS.settings = async v => {
     if (payload.cash_enabled === false && !confirm('تعطيل الدفع النقدي سيوقف كل الطلبات من تطبيق العميل لأنه الطريقة الوحيدة المتاحة له. هل تريد المتابعة؟')) return;
     await saveSettings(payload, 's_save_payments');
   };
-  $('s_save_loyalty').onclick = async () => {
-    const pts = parseNumber($('l_pts').value), redeemPts = parseNumber($('l_redeem_points').value), rewardValue = parseNumber($('l_reward').value);
-    if (!(pts > 0 && pts <= 100 && redeemPts >= 1 && rewardValue > 0)) return toast('راجع قيم النقاط والمكافأة', 'err');
-    await saveLoyalty({ loyalty_enabled: $('l_active').checked, loyalty_points_per_currency: pts, loyalty_redeem_points: Math.trunc(redeemPts), loyalty_redeem_value: rewardValue }, 's_save_loyalty');
-  };
-  const loadStampRewardItems = async () => {
-    const select = $('l_stamp_item'); if (!select) return;
-    const { data, error } = await sb.from('menu_items').select('id,name_ar,is_available,is_secret').eq('is_available', true).eq('is_secret', false).order('name_ar');
-    if (error) { select.innerHTML = '<option value="">تعذر تحميل أصناف المنيو</option>'; return; }
-    select.innerHTML = '<option value="">— بدون مكافأة صنف مجانية —</option>' + (data || []).map(x => `<option value="${x.id}" ${x.id === l.stamp_reward_item_id ? 'selected' : ''}>${esc(x.name_ar)}</option>`).join('');
-  };
-  loadStampRewardItems();
-  $('s_save_stamp').onclick = async () => {
-    const stamps = Math.trunc(parseNumber($('l_stamps').value));
-    if (!(stamps >= 2 && stamps <= 100)) return toast('عدد الأختام يجب أن يكون من 2 إلى 100', 'err');
-    const itemId = $('l_stamp_item').value || null;
-    await saveLoyalty({ loyalty_stamps_for_reward: stamps, loyalty_stamp_reward_item_id: itemId }, 's_save_stamp');
-  };
-
-  // Achievement management: backed by public.achievements and customer delivery trigger.
-  const achConditions = {first_order:'أول طلب مكتمل',delivered_orders:'عدد الطلبات المكتملة',total_spend:'إجمالي المشتريات',burger_quantity:'عدد قطع البرجر',vegetarian_orders:'طلبات الأصناف النباتية',night_order:'طلب ليلي',secret_item:'صنف من القائمة السرية',all_spicy_items:'كل الأصناف الحارة'};
-  let achRows = [];
-  const achEscape = x => String(x ?? '').replace(/[&<>\"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#39;'}[c]));
-  const resetAchForm = () => { ['ach-id','ach-key','ach-name','ach-description'].forEach(id=>$(id).value=''); $('ach-key').disabled=false; $('ach-icon').value='🏆'; $('ach-condition').value='delivered_orders'; $('ach-threshold').value='10'; $('ach-points').value='0'; $('ach-sort').value=String((achRows.length+1)*10); $('ach-editor-title').textContent='إضافة إنجاز'; $('ach-editor').classList.remove('hidden'); };
-  const loadAchievements = async () => {
-    const host=$('ach-list'), status=$('ach-status'); if(!host) return;
-    host.innerHTML='<div class="empty">جاري تحميل الإنجازات...</div>';
-    const {data,error}=await sb.from('achievements').select('*').order('sort_order').order('created_at');
-    if(error){host.innerHTML=`<div class="empty">تعذر تحميل الإنجازات: ${achEscape(error.message)}</div>`; if(status)status.textContent='خطأ في التحميل'; return;}
-    achRows=data||[]; if(status)status.textContent=`إجمالي ${achRows.length} إنجاز — ${achRows.filter(x=>x.is_active).length} مفعّل`;
-    host.innerHTML=achRows.length?`<div style="overflow:auto"><table class="data-table" style="width:100%"><thead><tr><th>الإنجاز</th><th>الشرط</th><th>المطلوب</th><th>نقاط إضافية</th><th>الحالة</th><th>إجراءات</th></tr></thead><tbody>${achRows.map(a=>`<tr><td><b>${achEscape(a.icon)} ${achEscape(a.name_ar)}</b><div style="font-size:11px;color:var(--ink2)">${achEscape(a.achievement_key)}</div><div style="font-size:11px;color:var(--ink2)">${achEscape(a.description_ar)}</div></td><td>${achEscape(achConditions[a.condition_type]||a.condition_type)}</td><td>${['night_order','secret_item','all_spicy_items','first_order'].includes(a.condition_type)?'تحقق الشرط':achEscape(a.threshold)+(a.condition_type==='total_spend'?' ج.م':'')}</td><td>${achEscape(a.reward_points)}</td><td>${a.is_active?'مفعّل':'متوقف'}</td><td><div class="row" style="gap:5px;flex-wrap:wrap"><button class="btn out sm" data-ach-edit="${a.id}">تعديل</button><button class="btn out sm" data-ach-toggle="${a.id}">${a.is_active?'إيقاف':'تفعيل'}</button><button class="btn out sm" data-ach-delete="${a.id}" style="color:var(--err)">حذف</button></div></td></tr>`).join('')}</tbody></table></div>`:'<div class="empty">لا توجد إنجازات. اضغط إضافة إنجاز للبدء.</div>';
-    host.querySelectorAll('[data-ach-edit]').forEach(b=>b.onclick=()=>{const a=achRows.find(x=>x.id===b.dataset.achEdit); if(!a)return; $('ach-id').value=a.id; $('ach-key').value=a.achievement_key; $('ach-key').disabled=true; $('ach-name').value=a.name_ar; $('ach-description').value=a.description_ar||''; $('ach-icon').value=a.icon||'🏆'; $('ach-condition').value=a.condition_type; $('ach-threshold').value=a.threshold; $('ach-points').value=a.reward_points||0; $('ach-sort').value=a.sort_order||0; $('ach-editor-title').textContent='تعديل الإنجاز'; $('ach-editor').classList.remove('hidden'); $('ach-editor').scrollIntoView({behavior:'smooth',block:'center'});});
-    host.querySelectorAll('[data-ach-toggle]').forEach(b=>b.onclick=async()=>{const a=achRows.find(x=>x.id===b.dataset.achToggle);if(!a)return;const {error}=await sb.from('achievements').update({is_active:!a.is_active,updated_at:new Date().toISOString()}).eq('id',a.id);if(error)return fail(error,'تعذر تغيير حالة الإنجاز');toast(a.is_active?'تم إيقاف الإنجاز':'تم تفعيل الإنجاز','ok');if(!a.is_active){const rr=await sb.rpc('recalculate_customer_achievements');if(rr.error)console.warn('[Achievements] recalc failed',rr.error);}await loadAchievements();await loadEarnedAchievements();});
-    host.querySelectorAll('[data-ach-delete]').forEach(b=>b.onclick=async()=>{const a=achRows.find(x=>x.id===b.dataset.achDelete);if(!a||!confirm(`حذف إعداد الإنجاز «${a.name_ar}»؟ سجل العملاء السابق سيظل محفوظًا.`))return;const {error}=await sb.from('achievements').delete().eq('id',a.id);if(error)return fail(error,'تعذر حذف الإنجاز');toast('تم حذف إعداد الإنجاز','ok');await loadAchievements();await loadEarnedAchievements();});
-  };
-  const loadEarnedAchievements = async () => {
-    const host=$('ach-earned-list');if(!host)return;
-    const [earnedRes,profilesRes]=await Promise.all([sb.from('user_achievements').select('id,user_id,achievement_key,metadata,unlocked_at').order('unlocked_at',{ascending:false}).limit(300),sb.from('profiles').select('id,full_name,phone')]);
-    if(earnedRes.error){host.innerHTML=`<div class="empty">تعذر تحميل السجل: ${achEscape(earnedRes.error.message)}</div>`;return;}
-    const names=new Map((profilesRes.data||[]).map(p=>[p.id,p]));
-    host.innerHTML=(earnedRes.data||[]).length?`<div style="overflow:auto;max-height:440px"><table class="data-table" style="width:100%"><thead><tr><th>العميل</th><th>الإنجاز</th><th>تاريخ الحصول</th></tr></thead><tbody>${earnedRes.data.map(e=>{const p=names.get(e.user_id)||{};const a=achRows.find(x=>x.achievement_key===e.achievement_key);return `<tr><td>${achEscape(p.full_name||'عميل بدون اسم')}<div style="font-size:11px;color:var(--ink2)">${achEscape(p.phone||'')}</div></td><td>${achEscape(a?.icon||'🏆')} ${achEscape(a?.name_ar||e.achievement_key)}</td><td>${achEscape(dtFull(e.unlocked_at))}</td></tr>`}).join('')}</tbody></table></div>`:'<div class="empty">لم يحصل أي عميل على إنجاز بعد.</div>';
-  };
-  $('ach-add').onclick=resetAchForm; $('ach-cancel').onclick=()=>{$('ach-editor').classList.add('hidden');resetAchForm();$('ach-editor').classList.add('hidden');};
-  $('ach-save').onclick=async()=>{
-    const id=$('ach-id').value, key=$('ach-key').value.trim(), name=$('ach-name').value.trim(), desc=$('ach-description').value.trim(), icon=$('ach-icon').value.trim()||'🏆', condition=$('ach-condition').value, threshold=parseNumber($('ach-threshold').value), points=parseNumber($('ach-points').value), sort=parseNumber($('ach-sort').value);
-    if(!id&&!/^[a-z][a-z0-9_]{2,59}$/.test(key))return toast('اكتب مفتاحًا إنجليزيًا صحيحًا من 3 إلى 60 حرفًا','err');
-    if(!name)return toast('اكتب اسم الإنجاز بالعربي','err');
-    if(!(['night_order','secret_item','all_spicy_items','first_order'].includes(condition))&&!(threshold>0))return toast('قيمة الشرط يجب أن تكون أكبر من صفر','err');
-    if(!(points>=0&&Number.isInteger(points)))return toast('النقاط الإضافية يجب أن تكون صفرًا أو عددًا صحيحًا','err');
-    const payload={achievement_key:key,name_ar:name,description_ar:desc,icon,condition_type:condition,threshold:threshold>0?threshold:1,reward_points:points,is_active:true,sort_order:Number.isFinite(sort)?sort:0,updated_at:new Date().toISOString()};
-    const {achievement_key:unusedKey,is_active:unusedActive,...updatePayload}=payload; const {error}=id?await sb.from('achievements').update(updatePayload).eq('id',id):await sb.from('achievements').insert(payload);
-    if(error)return fail(error,'تعذر حفظ الإنجاز');
-    toast('تم حفظ الإنجاز','ok');$('ach-editor').classList.add('hidden');const rr=await sb.rpc('recalculate_customer_achievements');if(rr.error)toast('تم حفظ الإنجاز، لكن تعذرت إعادة فحص العملاء الحاليين. سيُحتسب عند تسليم طلب جديد.','err',5000);await loadAchievements();await loadEarnedAchievements();
-  };
-  await loadAchievements(); await loadEarnedAchievements();
 
   // Reward-prize management is backed by the existing reward_prizes table.
   const rewardTypes = { none:'بدون جائزة', percent:'خصم نسبة مئوية', fixed:'خصم مبلغ ثابت', free_delivery:'توصيل مجاني', free_item:'صنف مجاني', free_addon:'إضافة مجانية' };
@@ -6318,8 +6418,6 @@ VIEWS.settings = async v => {
       catch(error){fail(error);}
     };
   };
-  $('reward-prize-add').onclick=()=>openRewardEditor(null);
-  loadRewardPrizes();
 };
 
 // حفظ العنوان الفرعي ولونه في app_content، وإحداثيات المطعم في store_settings
@@ -6439,6 +6537,32 @@ function renderPager(p, key) {
     <button ${p.current >= p.total - 1 ? 'disabled' : ''} data-page="${p.current + 1}">›</button>
   </div>`;
 }
+</script>
+<script>
+/* جوائز العجلة داخل شاشة «العروض والكوبونات» */
+VIEWS.offers = (function (orig) {
+  return async v => {
+    await orig(v);
+    const host = document.createElement('div');
+    host.id = 'rw-host';
+    host.style.marginTop = '22px';
+    v.appendChild(host);
+    await VIEWS['reward-prizes'](host);
+
+    const section = (id, title) => {
+      const wrap = document.createElement('div');
+      wrap.id = id;
+      wrap.style.marginTop = '22px';
+      wrap.innerHTML = `<div class="set-card" style="margin-bottom:12px"><h3>${title}</h3></div>`;
+      v.appendChild(wrap);
+      const body = document.createElement('div');
+      wrap.appendChild(body);
+      return body;
+    };
+    await renderLoyaltyControls(section('loyalty-host', '🏅 نقاط الولاء والمكافآت والكارت والإنجازات'));
+    await VIEWS.secret(section('secret-host', '🤫 كوبون المنيو السري'));
+  };
+})(VIEWS.offers);
 </script>
 <script>
 /* ---- inlined from js/14-boot.js ---- */
