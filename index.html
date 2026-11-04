@@ -2191,71 +2191,124 @@ function openMenuForm(m) {
     if (!sizesList.length) sizesList.push({name_ar:'عادي',price:0});
 
     openModal(`
-      <h2>${isEdit ? 'تعديل' : 'صنف جديد'} <button class="close" onclick="closeModal()">✕</button></h2>
-      <div class="tabs">
-        <button class="on" data-tab="basic">الأساسيات</button>
-        <button data-tab="price">الأسعار والأحجام</button>
-        <button data-tab="details">تفاصيل</button>
-        <button data-tab="relations">الإضافات والحساسية</button>
-      </div>
-      <div data-panel="basic">
-        <label>اسم المنتج الذي سيظهر للعميل *</label><input id="m_ar" value="${esc(m?.name_ar || '')}" maxlength="200">
-                <label>وصف المنتج (اختياري)</label><textarea id="m_desc">${esc(m?.description_ar || '')}</textarea>
-        <label>قسم قائمة الطعام *</label>
+      <h2>${isEdit ? 'تعديل المنتج' : 'إضافة منتج جديد'} <button class="close" onclick="closeModal()" aria-label="إغلاق">✕</button></h2>
+      <p style="font-size:12px;color:var(--ink2);margin:0 0 6px">الحقول اللي عليها * لازم تتكمل. باقي الحقول اختيارية.</p>
+      <div id="m_errors" class="hide" style="color:var(--err);background:#c6282812;border-radius:10px;padding:10px 12px;font-size:13px;font-weight:700;margin:8px 0"></div>
+
+      <section style="margin-top:10px">
+        <h3 style="font-size:14px;margin-bottom:6px">1. صورة المنتج</h3>
+        <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+          <div id="m_img_prev" style="width:120px;height:120px;border-radius:14px;background:var(--bg2);display:grid;place-items:center;overflow:hidden;flex-shrink:0"></div>
+          <div style="flex:1;min-width:200px">
+            <label class="btn out sm" style="display:inline-flex;cursor:pointer">📷 اختيار صورة من الجهاز<input id="m_file" type="file" accept="image/jpeg,image/png,image/webp" style="display:none"></label>
+            <button type="button" class="btn out sm" id="m_img_remove" style="margin-top:6px">🗑️ إزالة الصورة</button>
+            <small id="m_img_status" style="display:block;color:var(--ink2);margin-top:6px;line-height:1.6">JPG أو PNG أو WEBP، حتى 5 ميجابايت. الصورة اختيارية، ولو مفيش صورة هيظهر رمز الطبق.</small>
+          </div>
+        </div>
+      </section>
+
+      <section style="margin-top:14px">
+        <h3 style="font-size:14px;margin-bottom:6px">2. الاسم والوصف</h3>
+        <label>اسم المنتج * <small>هيظهر للعميل بالاسم ده</small></label>
+        <input id="m_ar" maxlength="200" value="${esc(m?.name_ar || '')}" placeholder="مثال: برجر كلاسيك">
+        <label>وصف قصير (اختياري) <small>جملة واحدة تشرح المنتج</small></label>
+        <textarea id="m_desc" rows="2" placeholder="مثال: لحم بقري طازج مع جبنة شيدر وصوص مخصوص">${esc(m?.description_ar || '')}</textarea>
+      </section>
+
+      <section style="margin-top:14px">
+        <h3 style="font-size:14px;margin-bottom:6px">3. القسم</h3>
+        <label>القسم اللي هيظهر فيه المنتج * <small>القسم هو اللي بيظهر كشاشة مستقلة في المنيو</small></label>
         <select id="m_cat_id">
-          <option value="">— بدون —</option>
+          <option value="">— اختار القسم —</option>
           ${(cats.data || []).map(c => `<option value="${c.id}" ${m?.category_id === c.id ? 'selected' : ''}>${esc(c.name_ar)}</option>`).join('')}
         </select>
-        <label>التصنيف الفرعي (اختياري) <small>يظهر تحت القسم الرئيسي لتقسيم المنيو إلى مجموعات أدق</small></label>
-        <select id="m_subcat_id"><option value="">بدون تصنيف فرعي</option>${(subcategories.data||[]).filter(sc=>sc.category_id===(m?.category_id||'')).map(sc=>`<option value="${sc.id}" ${m?.subcategory_id===sc.id?'selected':''}>${esc(sc.name_ar)}</option>`).join('')}</select>
-        <label>رابط صورة المنتج (HTTPS، اختياري)</label><input id="m_img" dir="ltr" value="${esc(m?.image_url || '')}" placeholder="https://...">
-        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
-          <label style="margin:0;display:flex;align-items:center;gap:6px"><input type="checkbox" id="m_avail" ${m?.is_available !== false ? 'checked' : ''}> متوفر</label>
+        <div id="m_subcat_wrap" class="hide">
+          <label>تصنيف فرعي (اختياري) <small>لتقسيم القسم لمجموعات أصغر</small></label>
+          <select id="m_subcat_id"></select>
         </div>
-      </div>
-      <div data-panel="price" class="hidden">
-        <section>
-          <h3>أحجام المنتج وأسعارها</h3><p style="font-size:12px;color:var(--ink2);line-height:1.7">أضف كل حجم وسعره بشكل منفصل. مثال: عادي — 100 جنيه، كبير — 150 جنيه. يجب إضافة حجم واحد على الأقل وسعره أكبر من صفر.</p>
-          <div id="sizes-list"></div>
-          <button type="button" class="btn out sm" id="add-size" style="margin-top:8px">+ حجم</button>
-        </section>
-      </div>
-      <div data-panel="details" class="hidden">
-        <label>مكونات المنتج (افصل بينها بفواصل)</label><textarea id="m_ingr">${esc(Array.isArray(m?.ingredients_ar) ? m.ingredients_ar.join(', ') : (m?.ingredients_ar || ''))}</textarea>
-        <label>رمز داخلي للمنتج (اختياري — اتركه كما هو)</label><input id="m_slug" dir="ltr" value="${esc(m?.slug || '')}">
-        <label>عبارة صغيرة على المنتج (اختياري)</label><input id="m_badge" maxlength="30" value="${esc(m?.display_badge || '')}">
-        <label>مسببات الحساسية المحتملة (افصل بينها بفواصل)</label><input id="m_allergens" value="${esc((m?.allergens || []).join(', '))}">
-        <div class="toggle"><span>🌶️ حار</span><input type="checkbox" id="m_spicy" ${m?.is_spicy ? 'checked' : ''}></div>
-        <div class="toggle"><span>🌱 نباتي</span><input type="checkbox" id="m_veg" ${m?.is_vegetarian ? 'checked' : ''}></div>
-        <div class="toggle"><span>🔥 الأكثر طلبًا</span><input type="checkbox" id="m_popular" ${m?.is_popular ? 'checked' : ''}></div>
-        <div class="toggle"><span>🛵 توصيل مجاني لهذا الصنف</span><input type="checkbox" id="m_free_delivery" ${m?.free_delivery ? 'checked' : ''}></div>
-        <div class="toggle"><span>🤫 إظهار الصنف في المنيو السري فقط</span><input type="checkbox" id="m_secret" ${m?.is_secret ? 'checked' : ''}></div>
-        <p style="font-size:12px;color:var(--ink2);line-height:1.8;margin-top:6px">🔐 عند تفعيل الاختيار يظهر على بطاقة المنتج شارة «كود سري» ويختفي من المنيو العادي. لا يمكن تخصيص منتج مرتبط بعرض نشط للمنيو السري، ولا تفعيل عرض على منتج سري. بعد الحفظ اربطه بكود من قسم المنيو السري.</p>
-      </div>
-      <div data-panel="relations" class="hidden">
-        <section>
-          <h3>الإضافات المتاحة</h3>
-          <div class="chips" id="addon-chips">
-            ${(addons.data || []).map(a => `<label class="chip ${selAddon.has(a.id) ? 'on' : ''}" data-addon="${a.id}">${esc(a.name_ar)} +${money(a.price || 0)}</label>`).join('') || '<span style="color:var(--ink2);font-size:12px">لا توجد إضافات — أضفها من قسم الإضافات</span>'}
-          </div>
-        </section>
-      </div>
+      </section>
+
+      <section style="margin-top:14px">
+        <h3 style="font-size:14px;margin-bottom:4px">4. الأحجام والأسعار *</h3>
+        <p style="font-size:12px;color:var(--ink2);line-height:1.7;margin:0 0 6px">لازم حجم واحد على الأقل باسم وسعر أكبر من صفر. لو المنتج له حجم واحد اكتب "عادي". سعر بعد الخصم اختياري، ولازم يكون أقل من السعر الأصلي.</p>
+        <div id="sizes-list"></div>
+        <button type="button" class="btn out sm" id="add-size" style="margin-top:8px">+ إضافة حجم</button>
+      </section>
+
+      <section style="margin-top:14px">
+        <h3 style="font-size:14px;margin-bottom:6px">5. المكونات (اختياري)</h3>
+        <textarea id="m_ingr" rows="2" placeholder="مثال: لحم بقري، جبنة شيدر، خس، طماطم">${esc(Array.isArray(m?.ingredients_ar) ? m.ingredients_ar.join(', ') : (m?.ingredients_ar || ''))}</textarea>
+        <small style="color:var(--ink2);font-size:12px">افصل بين كل مكون والتاني بفاصلة.</small>
+      </section>
+
+      <section style="margin-top:14px">
+        <h3 style="font-size:14px;margin-bottom:6px">6. الإضافات (اختياري)</h3>
+        <div class="chips" id="addon-chips">
+          ${(addons.data || []).map(a => `<label class="chip ${selAddon.has(a.id) ? 'on' : ''}" data-addon="${a.id}">${esc(a.name_ar)} +${money(a.price || 0)}</label>`).join('') || '<span style="color:var(--ink2);font-size:12px">مفيش إضافات لسه. اعملها من قسم الإضافات الأول.</span>'}
+        </div>
+        <small style="color:var(--ink2);font-size:12px">اضغط على الإضافة عشان تختارها أو تلغيها.</small>
+      </section>
+
+      <section style="margin-top:14px">
+        <h3 style="font-size:14px;margin-bottom:6px">7. علامات المنيو (اختياري)</h3>
+        <div class="toggle"><span>🔥 الأكثر طلبًا <small>يظهر في فلتر «الأكثر طلبًا»</small></span><input type="checkbox" id="m_popular" ${m?.is_popular ? 'checked' : ''}></div>
+        <div class="toggle"><span>🌶️ حار <small>يظهر في فلتر «حار»</small></span><input type="checkbox" id="m_spicy" ${m?.is_spicy ? 'checked' : ''}></div>
+        <div class="toggle"><span>🌱 نباتي <small>يظهر في فلتر «نباتي»</small></span><input type="checkbox" id="m_veg" ${m?.is_vegetarian ? 'checked' : ''}></div>
+        <div class="toggle"><span>🛵 توصيل مجاني <small>يظهر في فلتر «توصيل مجاني»</small></span><input type="checkbox" id="m_free_delivery" ${m?.free_delivery ? 'checked' : ''}></div>
+      </section>
+
+      <section style="margin-top:14px">
+        <h3 style="font-size:14px;margin-bottom:6px">8. الظهور</h3>
+        <div class="toggle"><span>✅ متوفر للطلب <small>لو مطفي المنتج بيختفي من المنيو</small></span><input type="checkbox" id="m_avail" ${m?.is_available !== false ? 'checked' : ''}></div>
+        <div class="toggle"><span>🤫 منيو سري <small>يظهر بس بكود المنيو السري، ومش في المنيو العادي</small></span><input type="checkbox" id="m_secret" ${m?.is_secret ? 'checked' : ''}></div>
+      </section>
+
       <div class="row" style="margin-top:16px;position:sticky;bottom:-22px;background:var(--sf);padding:12px 0;border-top:1px solid var(--line)">
-        <button class="btn pri big" id="m_save">💾 حفظ</button>
+        <button class="btn pri big" id="m_save">💾 حفظ المنتج</button>
         <button class="btn out big" onclick="closeModal()">إلغاء</button>
       </div>
     `, true);
 
-    // Tabs
-    $('mod').querySelectorAll('.tabs button').forEach(b => b.onclick = () => {
-      $('mod').querySelectorAll('.tabs button').forEach(x => x.classList.toggle('on', x === b));
-      $('mod').querySelectorAll('[data-panel]').forEach(p => p.classList.toggle('hidden', p.dataset.panel !== b.dataset.tab));
-    });
-    $('m_cat_id').onchange = () => {
-      const selectedCategory = $('m_cat_id').value;
-      const options = (subcategories.data||[]).filter(sc=>sc.category_id===selectedCategory);
-      $('m_subcat_id').innerHTML = '<option value="">بدون تصنيف فرعي</option>' + options.map(sc=>`<option value="${sc.id}">${esc(sc.name_ar)}</option>`).join('');
+    // ---- صورة المنتج: رفع من الجهاز ----
+    $('mod')._img = m?.image_url || '';
+    const paintImg = () => {
+      const box = $('m_img_prev'), u = $('mod')._img;
+      box.innerHTML = u
+        ? `<img src="${esc(u)}" alt="صورة المنتج" style="width:100%;height:100%;object-fit:cover">`
+        : '<span style="font-size:40px">🍽️</span>';
     };
+    paintImg();
+    $('m_file').onchange = async e => {
+      const f = e.target.files && e.target.files[0];
+      e.target.value = '';
+      if (!f) return;
+      if (!['image/jpeg', 'image/png', 'image/webp'].includes(f.type)) return toast('نوع الصورة غير مدعوم. استخدم JPG أو PNG أو WEBP', 'err');
+      if (f.size > 5 * 1024 * 1024) return toast('حجم الصورة أكبر من 5 ميجابايت', 'err');
+      const ext = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' }[f.type];
+      const path = `items/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+      $('m_img_status').textContent = '⏳ جاري رفع الصورة...';
+      try {
+        const up = await sb.storage.from('menu-images').upload(path, f, { contentType: f.type, upsert: false });
+        if (up.error) throw up.error;
+        const url = sb.storage.from('menu-images').getPublicUrl(path)?.data?.publicUrl;
+        if (!url) throw new Error('تعذر الحصول على رابط الصورة');
+        $('mod')._img = url;
+        paintImg();
+        $('m_img_status').textContent = '✅ تم رفع الصورة. اضغط حفظ المنتج عشان تتسجل.';
+      } catch (err) { $('m_img_status').textContent = ''; fail(err, hpErrMsg(err)); }
+    };
+    $('m_img_remove').onclick = () => { $('mod')._img = ''; paintImg(); $('m_img_status').textContent = 'اتشالت الصورة. اضغط حفظ عشان التغيير يتسجل.'; };
+
+    // ---- التصنيف الفرعي يظهر بس لو القسم ليه تصنيفات فرعية ----
+    const fillSubcats = () => {
+      const selectedCategory = $('m_cat_id').value;
+      const options = (subcategories.data || []).filter(sc => sc.category_id === selectedCategory);
+      $('m_subcat_id').innerHTML = '<option value="">— بدون —</option>' + options.map(sc => `<option value="${sc.id}" ${m?.subcategory_id === sc.id ? 'selected' : ''}>${esc(sc.name_ar)}</option>`).join('');
+      $('m_subcat_wrap').classList.toggle('hide', options.length === 0);
+    };
+    fillSubcats();
+    $('m_cat_id').onchange = fillSubcats;
+
     // Chips
     $('mod').querySelectorAll('[data-badge],[data-allerg],[data-addon]').forEach(c => {
       c.onclick = e => {
@@ -2266,14 +2319,18 @@ function openMenuForm(m) {
     // Sizes
     const sizesList_el = $('sizes-list');
     const renderSizes = () => {
-      sizesList_el.innerHTML = $('mod')._sizes.map((s, i) => `
-        <div style="display:grid;grid-template-columns:minmax(0,1fr) 90px 90px 40px;gap:6px;margin-top:6px">
-          <input data-size-name="${i}" placeholder="اسم الحجم (مثال: عادي أو كبير)" title="اكتب اسم الحجم الذي سيختاره العميل" value="${esc(s.name_ar || '')}" maxlength="40">
-          <input data-size-price="${i}" type="number" inputmode="decimal" min="0" step="0.01" placeholder="السعر بالجنيه" title="سعر هذا الحجم بالجنيه المصري" value="${Number.isFinite(Number(s.price)) && Number(s.price) > 0 ? Number(s.price) : ''}">
-          <input data-size-sale="${i}" type="number" inputmode="decimal" min="0" step="0.01" placeholder="سعر البيع" title="اختياري: سعر العرض لهذا الحجم. يظهر في شريط عروض السيل ولازم يكون أقل من السعر" value="${s.sale != null && Number(s.sale) > 0 ? Number(s.sale) : ''}">
+      sizesList_el.innerHTML = `
+        <div style="display:grid;grid-template-columns:minmax(0,1fr) 90px 110px 40px;gap:6px;font-size:12px;color:var(--ink2);font-weight:700;margin-top:4px">
+          <span>اسم الحجم *</span><span>السعر *</span><span>بعد الخصم</span><span></span>
+        </div>
+      ` + $('mod')._sizes.map((s, i) => `
+        <div style="display:grid;grid-template-columns:minmax(0,1fr) 90px 110px 40px;gap:6px;margin-top:6px">
+          <input data-size-name="${i}" placeholder="مثال: عادي أو كبير" value="${esc(s.name_ar || '')}" maxlength="40">
+          <input data-size-price="${i}" type="number" inputmode="decimal" min="0" step="0.01" placeholder="مثال: 100" value="${Number.isFinite(Number(s.price)) && Number(s.price) > 0 ? Number(s.price) : ''}">
+          <input data-size-sale="${i}" type="number" inputmode="decimal" min="0" step="0.01" placeholder="اختياري" value="${s.sale != null && Number(s.sale) > 0 ? Number(s.sale) : ''}">
           <button type="button" class="btn out sm dng" data-size-remove="${i}" aria-label="حذف الحجم">✕</button>
         </div>
-      `).join('') || '<span style="color:var(--ink2);font-size:12px">لا توجد أحجام بعد — اضغط «+ حجم» لإضافة حجم</span>';
+      `).join('') || '<span style="color:var(--ink2);font-size:12px">لسه مفيش أحجام. اضغط «+ إضافة حجم».</span>';
 
       sizesList_el.querySelectorAll('[data-size-name]').forEach(input => {
         input.addEventListener('input', e => {
@@ -2307,39 +2364,58 @@ function openMenuForm(m) {
     $('add-size').onclick = () => { $('mod')._sizes.push({ name_ar:'', price:0, sale:null }); renderSizes(); };
 
     $('m_save').onclick = async () => {
-      const ar = $('m_ar').value.trim();
-      if (!ar) { toast('الاسم مطلوب', 'err'); return; }
-      if (!$('m_cat_id').value) { toast('اختر القسم', 'err'); return; }
+      const errs = [];
+      const markBad = id => { const el = $(id); if (el) el.style.borderColor = 'var(--err)'; };
+      ['m_ar', 'm_cat_id'].forEach(id => { const el = $(id); if (el) el.style.borderColor = ''; });
 
-      const validSizes = ($('mod')._sizes || []).filter(x => x.name_ar && Number(x.price) > 0).map(x => ({ name_ar: x.name_ar, price: Number(x.price) }));
-      if (!validSizes.length) { toast('أضف حجمًا واحدًا على الأقل بسعر أكبر من صفر', 'err'); return; }
-      // سعر البيع اختياري لكل حجم، ولازم يكون أكبر من صفر وأقل من السعر
+      const ar = $('m_ar').value.trim();
+      if (!ar) { errs.push('اسم المنتج'); markBad('m_ar'); }
+      if (!$('m_cat_id').value) { errs.push('القسم'); markBad('m_cat_id'); }
+
+      const sizesRaw = $('mod')._sizes || [];
+      const validSizes = sizesRaw.filter(x => (x.name_ar || '').trim() && Number(x.price) > 0)
+        .map(x => ({ name_ar: x.name_ar.trim(), price: Number(x.price) }));
+      if (!validSizes.length) errs.push('حجم واحد على الأقل باسم وسعر أكبر من صفر');
+
       const saleByLabel = new Map();
-      for (const x of ($('mod')._sizes || [])) {
-        if (!x.name_ar || Number(x.price) <= 0) continue;
+      for (const x of sizesRaw) {
+        if (!(x.name_ar || '').trim() || Number(x.price) <= 0) continue;
         const sale = x.sale == null || x.sale === '' ? null : Number(x.sale);
         if (sale === null) { saleByLabel.set(x.name_ar.trim(), null); continue; }
-        if (!Number.isFinite(sale) || sale <= 0 || sale >= Number(x.price)) { toast(`سعر البيع للحجم «${x.name_ar}» لازم يكون أكبر من صفر وأقل من سعره`, 'err'); return; }
+        if (!Number.isFinite(sale) || sale <= 0 || sale >= Number(x.price)) {
+          errs.push(`سعر بعد الخصم للحجم «${x.name_ar}» لازم يكون أكبر من صفر وأقل من سعره الأصلي`);
+          continue;
+        }
         saleByLabel.set(x.name_ar.trim(), sale);
       }
+
+      const box = $('m_errors');
+      if (errs.length) {
+        box.innerHTML = '⚠️ لسه ناقص: ' + errs.join(' · ');
+        box.classList.remove('hide');
+        box.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        return;
+      }
+      box.classList.add('hide');
+
+      const subId = $('m_subcat_id')?.value || '';
       const payload = {
         name_ar: ar,
         description_ar: $('m_desc').value.trim() || null,
-        category_id: $('m_cat_id').value || null,
-        subcategory_id: $('m_subcat_id').value || null,
-        subcategory_ar: $('m_subcat_id').value ? ((subcategories.data||[]).find(sc=>sc.id===$('m_subcat_id').value)?.name_ar || null) : null,
-        image_url: $('m_img').value.trim() || null,
+        category_id: $('m_cat_id').value,
+        subcategory_id: subId || null,
+        subcategory_ar: subId ? ((subcategories.data || []).find(sc => sc.id === subId)?.name_ar || null) : null,
+        image_url: $('mod')._img || null,
         is_available: $('m_avail').checked,
-        ingredients_ar: $('m_ingr').value.split(',').map(x=>x.trim()).filter(Boolean),
-        allergens: $('m_allergens').value.split(',').map(x=>x.trim()).filter(Boolean),
-        display_badge: $('m_badge').value.trim() || null,
-        slug: ($('m_slug').value.trim().toLowerCase().replace(/[^a-z0-9-]/g,'-').replace(/-+/g,'-').replace(/^-|-$/g,'') || `item-${Date.now()}`),
+        ingredients_ar: $('m_ingr').value.split(',').map(x => x.trim()).filter(Boolean),
         is_spicy: $('m_spicy').checked,
         is_vegetarian: $('m_veg').checked,
         is_popular: $('m_popular').checked,
         free_delivery: $('m_free_delivery').checked,
         is_secret: $('m_secret').checked
       };
+      // الرمز الداخلي يتولّد تلقائيًا عند الإضافة، ولا يُعرض للمستخدم
+      if (!isEdit) payload.slug = `item-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
 
       try {
         let itemId = m?.id;
@@ -3993,7 +4069,7 @@ async function dcCount(table, filters) {
 /* فحص يُرجع قائمة شروط. أي خطأ في فحص يُظهر كشرط مانع. */
 async function dcSafe(label, table, filters, block, note) {
   try { return { label, n: await dcCount(table, filters), block, note }; }
-  catch (e) { return { label, n: 1, block: true, error: true, note: 'تعذر التحقق من هذا الارتباط، لذلك الحذف متوقف: ' + (e?.message || e?.details || hpErrMsg(e)) }; }
+  catch (e) { return { label, n: 1, block: true, error: true, note: 'تعذر التحقق من هذا الارتباط، لذلك الحذف متوقف: ' + hpErrMsg(e) }; }
 }
 
 const DC_ENTITIES = {
@@ -4017,7 +4093,7 @@ const DC_ENTITIES = {
     ]) },
   coupons: { label: 'الكوبونات', table: 'coupons', cols: 'id,code,is_active', name: r => r.code,
     checks: id => Promise.all([
-      dcSafe('مرات الاستخدام المسجلة', 'coupon_redemptions', { coupon_id: id }, false, 'تُمسح سجلات الاستخدام مع الكوبون')
+      dcSafe('مرات الاستخدام المسجلة', 'coupon_redemptions', { coupon_id: id }, true, 'الكوبون استُخدم، وحذفه يمحو سجل الاستخدام المالي. عطّله بدل الحذف.')
     ]) },
   categories: { label: 'التصنيفات', table: 'categories', cols: 'id,name_ar,is_active', name: r => r.name_ar,
     checks: id => Promise.all([
@@ -4028,14 +4104,14 @@ const DC_ENTITIES = {
     ]) },
   products: { label: 'المنتجات', table: 'menu_items', cols: 'id,name_ar,is_available', name: r => r.name_ar,
     checks: id => Promise.all([
-      dcSafe('عروض تحتوي المنتج', 'menu_promotion_items', { item_id: id }, false, 'تُزال من العروض تلقائيًا'),
-      dcSafe('تقييمات العملاء على المنتج', 'reviews', { item_id: id }, false, 'تُحذف مع المنتج'),
+      dcSafe('عروض تحتوي المنتج', 'menu_promotion_items', { item_id: id }, true, 'أزل المنتج من العروض أولًا'),
+      dcSafe('تقييمات العملاء على المنتج', 'reviews', { item_id: id }, true, 'التقييمات تُمحى مع المنتج. أخفِ المنتج بدل حذفه.'),
       dcSafe('أحجام المنتج', 'item_sizes', { item_id: id }, false, 'تُحذف مع المنتج'),
       dcSafe('إضافات مرتبطة بالمنتج', 'item_addons', { item_id: id }, false, 'تُفصل تلقائيًا'),
       dcSafe('مجموعات إضافات', 'addon_groups', { item_id: id }, false, 'تُحذف مع المنتج'),
       dcSafe('شارات المنتج', 'menu_item_badges', { item_id: id }, false, 'ارتباط تعريفي بالمنتج'),
-      dcSafe('بنود الطلبات السابقة', 'order_items', { item_id: id }, false, 'تبقى في الطلبات باسم المنتج المحفوظ'),
-      dcSafe('عناصر سلال العملاء', 'customer_cart_items', { item_id: id }, false, 'تُزال من السلال تلقائيًا')
+      dcSafe('بنود الطلبات السابقة', 'order_items', { item_id: id }, true, 'لا يُحذف منتج دخل في طلب سابق حتى لا تتضرر تفاصيل الطلب وسجلاته.'),
+      dcSafe('عناصر سلال العملاء', 'customer_cart_items', { item_id: id }, true, 'أزل المنتج من السلال النشطة أولًا أو أوقفه مؤقتًا.')
     ]) },
   subcategories: { label: 'التصنيفات الفرعية', table: 'subcategories', cols: 'id,name_ar,category_id,is_active', name: r => r.name_ar,
     checks: id => Promise.all([
@@ -4060,11 +4136,11 @@ const DC_ENTITIES = {
     ]) },
   zones: { label: 'مناطق التوصيل', table: 'delivery_zones', cols: 'id,name_ar,is_active', name: r => r.name_ar,
     checks: id => Promise.all([
-      dcSafe('طلبات في هذه المنطقة', 'orders', { zone_id: id }, false, 'تبقى الطلبات بسعر التوصيل المحفوظ بدون منطقة')
+      dcSafe('طلبات في هذه المنطقة', 'orders', { zone_id: id }, true, 'الطلبات تحتفظ بالمنطقة. عطّل المنطقة بدل حذفها.')
     ]) },
   drivers: { label: 'السائقون', table: 'drivers', cols: 'id,full_name,is_active', name: r => r.full_name,
     checks: id => Promise.all([
-      dcSafe('طلبات أُسندت لهذا السائق', 'orders', { assigned_driver_id: id }, false, 'تبقى الطلبات بدون سائق مسند')
+      dcSafe('طلبات أُسندت لهذا السائق', 'orders', { assigned_driver_id: id }, true, 'الطلبات تفقد السائق. عطّل السائق بدل حذفه.')
     ]) },
   loyalty: { label: 'مستويات الولاء', table: 'loyalty_levels', cols: 'id,name_ar,min_points', name: r => r.name_ar, checks: async () => [] },
   appContent: { label: 'محتوى التطبيق', table: 'app_content', cols: 'id,label_ar,group_key,item_key', name: r => `${r.group_key}.${r.item_key}`, checks: async () => [] },
@@ -4093,12 +4169,6 @@ const DC_ENTITIES = {
     checks: id => Promise.all([
       dcSafe('المنتجات المحددة للكود', 'secret_menu_code_items', { code_id: id }, false, 'تحذف روابط المنتجات مع الكود'),
       dcSafe('عمليات إصدار مكافآت مرتبطة', 'secret_menu_reward_issuances', { code_id: id }, true, 'يوجد سجل إصدار مكافآت؛ لا تحذف الكود حتى لا تفقد سجل العملاء.')
-    ]) },
-  reviews: { label: 'التقييمات', table: 'reviews', cols: 'id,display_name,rating,comment', name: r => `${r.display_name || 'عميل'} · ${r.rating || 0} نجوم · ${(r.comment || '').slice(0, 40)}`, checks: async () => [] },
-  customers: { label: 'العملاء', table: 'profiles', cols: 'id,full_name,phone', name: r => r.full_name || r.phone || 'عميل',
-    checks: id => Promise.all([
-      dcSafe('طلبات العميل', 'orders', { user_id: id }, false, 'تبقى الطلبات كسجل مالي بدون ربط بالعميل'),
-      dcSafe('تقييمات العميل', 'reviews', { user_id: id }, false, 'تُحذف مع العميل')
     ]) },
   customerRestrictions: { label: 'قيود وحظر العملاء', table: 'customer_restrictions', cols: 'id,customer_phone,reason,is_blocked', name: r => `${r.customer_phone || 'عميل'} · ${r.reason || (r.is_blocked ? 'محظور' : 'قيد')}`, checks: async () => [] },
   adminNotifications: { label: 'إشعارات الإدارة', table: 'admin_notifications', cols: 'id,title,body,created_at', name: r => r.title || r.body || 'إشعار إداري', checks: async () => [] },
@@ -4222,22 +4292,6 @@ async function dcOpenConfirm(ent, row, v, entityKey = dcCurrent) {
   $('dc_go').onclick = async () => {
     const btn = $('dc_go'); btn.disabled = true; btn.textContent = '⏳ جاري الحذف...';
     try {
-      if (entityKey === 'zones') {
-        const rz = await sb.rpc('admin_delete_delivery_zone', { p_id: row.id });
-        if (rz.error) throw rz.error;
-        closeModal();
-        toast('تم حذف منطقة التوصيل نهائيًا', 'ok');
-        VIEWS['delete-center'](v);
-        return;
-      }
-      if (entityKey === 'customers') {
-        const rr = await sb.rpc('admin_delete_customer', { p_user: row.id });
-        if (rr.error) throw rr.error;
-        closeModal();
-        toast('تم حذف العميل نهائيًا', 'ok');
-        VIEWS['delete-center'](v);
-        return;
-      }
       await dcCleanupRelations(entityKey, row);
       let delQuery = sb.from(ent.table).delete();
       for (const [k, value] of Object.entries(rowFilters)) delQuery = delQuery.eq(k, value);
@@ -4350,7 +4404,7 @@ async function openCustomerDetail(id) {
     ${can(OM) ? `<div class="row" style="margin-top:12px">
       <button class="btn out sm" id="adjPts">➕ تعديل النقاط</button>
       <button class="btn out sm" id="giveCoupon">🎁 منح كوبون</button>
-      <button class="btn out ${c?.is_blocked ? 'ok' : 'dng'} sm" id="toggleBlock">${c?.is_blocked ? '🔓 فك الحظر' : '🚫 حظر'}</button>\n      <button class="btn out dng sm" id="delCust">🗑️ حذف نهائي</button>
+      <button class="btn out ${c?.is_blocked ? 'ok' : 'dng'} sm" id="toggleBlock">${c?.is_blocked ? '🔓 فك الحظر' : '🚫 حظر'}</button>
     </div>` : ''}
     ${loyalSection}
     <section>
@@ -4414,12 +4468,6 @@ async function openCustomerDetail(id) {
       } else if (existing.data?.[0]?.id) { const {error}=await sb.from('customer_restrictions').update({is_blocked:false,lifted_at:new Date().toISOString(),lifted_by:ME?.id||null,updated_at:new Date().toISOString()}).eq('id',existing.data[0].id); if(error) throw error; }
       toast(block ? 'تم الحظر' : 'تم فك الحظر', 'ok'); closeModal(); openCustomerDetail(id);
     } catch (e) { fail(e); }
-  };
-  if ($('delCust')) $('delCust').onclick = async () => {
-    if (!await ask('حذف العميل', 'حذف العميل نهائيًا؟ طلباته تبقى كسجل مالي بدون ربط به، وتقييماته تُحذف.', 'حذف')) return;
-    const { error } = await sb.rpc('admin_delete_customer', { p_user: id });
-    if (error) return fail(error);
-    toast('تم حذف العميل', 'ok'); closeModal(); go('customers');
   };
 }
 
@@ -4698,7 +4746,7 @@ VIEWS.reviews = async v => {
         <td data-label="النجوم" style="color:#F9A825">${'⭐'.repeat(r.rating || 0)}</td>
         <td data-label="التعليق">${esc(r.comment || '—')}${r.admin_reply ? `<br><small style="color:var(--ok)">↩️ ${esc(r.admin_reply)}</small>` : ''}</td>
         <td data-label=""><div class="row">
-          ${can(OM) ? `<button class="btn out sm" data-a="reply">💬 رد</button><button class="btn out dng sm" data-a="del">🙈 إخفاء</button><button class="btn out dng sm" data-a="hdel">🗑️ حذف</button>` : ''}
+          ${can(OM) ? `<button class="btn out sm" data-a="reply">💬 رد</button><button class="btn out dng sm" data-a="del">🙈 إخفاء</button>` : ''}
         </div></td>
       </tr>`).join('')}</tbody></table>${renderPager(p, 'reviews')}`
       : '<div class="empty">مفيش تقييمات</div>'}`;
@@ -4730,12 +4778,6 @@ VIEWS.reviews = async v => {
     const { error } = await sb.from('reviews').update({is_hidden:true}).eq('id', b.closest('tr').dataset.id);
     if (error) return fail(error);
     toast('تم إخفاء التقييم', 'ok'); go('reviews');
-  });
-  v.querySelectorAll('[data-a="hdel"]').forEach(b => b.onclick = async () => {
-    if (!await ask('حذف', 'حذف التقييم نهائيًا؟', 'حذف')) return;
-    const { error } = await sb.from('reviews').delete().eq('id', b.closest('tr').dataset.id);
-    if (error) return fail(error);
-    toast('تم حذف التقييم نهائيًا', 'ok'); go('reviews');
   });
   v.querySelectorAll('[data-page]').forEach(b => b.onclick = () => { pageIdx['reviews'] = Number(b.dataset.page); go('reviews'); });
 };
