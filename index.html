@@ -2706,30 +2706,75 @@ function openCouponForm(c) {
 
 /* ─── MENU PROMOTIONS (separate from coupon codes) ─── */
 VIEWS.offers = async v => {
-  const r = await safeQuery(() => sb.from('menu_promotions').select('id,name_ar,description_ar,image_url,promotion_type,target_item_id,reward_item_id,reward_addon_id,value,max_discount,min_order,starts_at,ends_at,max_uses,used_count,is_active,priority,stackable,created_at').order('priority',{ascending:false}).order('created_at',{ascending:false}).limit(300), []);
-  const data = r.data || [];
-  v.innerHTML = `<div class="set-card" style="margin-bottom:14px"><h3>🎁 إدارة العروض التي تظهر للعميل</h3><p style="font-size:13px;line-height:1.9;color:var(--ink2)">كل عرض هنا محفوظ في سوبا بيز ويظهر في سلايدر الصفحة الرئيسية عندما يكون نشطًا وداخل فترة الصلاحية. اكتب صورة HTTPS إن أردت صورة بانر مستقلة؛ وإلا سيستخدم التطبيق صورة المنتج المرتبط بالعرض. العروض لا تُكرر في شاشة الواجهة الرئيسية.</p><div class="head"><span>${data.length} عرض محفوظ</span><button class="btn pri" id="addoffer">+ إنشاء عرض</button></div></div>
-    ${data.length ? `<div class="set-grid">${data.map(x=>`<article class="set-card" data-id="${x.id}" style="display:flex;flex-direction:column;gap:10px">${x.image_url?`<img src="${esc(x.image_url)}" alt="" loading="lazy" style="width:100%;height:140px;object-fit:cover;border-radius:12px">`:''}<div style="display:flex;align-items:start;justify-content:space-between;gap:8px"><h3>${esc(x.name_ar)}</h3><span class="badge">${!x.is_active?'متوقف':(x.starts_at&&new Date(x.starts_at)>new Date()?'قادم':(x.ends_at&&new Date(x.ends_at)<new Date()?'منتهي':(x.max_uses!=null&&Number(x.used_count||0)>=Number(x.max_uses)?'اكتمل الاستخدام':'نشط')))}</span></div><p style="color:var(--ink2);font-size:13px">${esc(x.description_ar||'لا يوجد وصف مضاف')}</p><div><b>${esc(({percent:'خصم نسبة',fixed:'خصم مبلغ',free_delivery:'توصيل مجاني',free_item:'صنف مجاني',free_addon:'إضافة مجانية'})[x.promotion_type]||x.promotion_type)}</b> · ${['percent','fixed'].includes(x.promotion_type)?(x.promotion_type==='percent'?`${x.value}%` : money(x.value)):'بدون قيمة نقدية'}</div><small>الاستخدام: ${x.used_count||0}${x.max_uses?' / '+x.max_uses:' / بلا حد'} · الأولوية: ${x.priority||0}</small><small>البداية: ${x.starts_at?dtShort(x.starts_at):'فور التفعيل'} · النهاية: ${x.ends_at?dtShort(x.ends_at):'بدون انتهاء'}</small><div class="row"><button class="btn pri sm" data-offer-edit>✏️ تعديل</button><button class="btn out sm" data-offer-toggle>${x.is_active?'إيقاف العرض':'تفعيل العرض'}</button></div></article>`).join('')}</div>` : '<div class="empty">لا توجد عروض بعد. اضغط «إنشاء عرض» لإضافة أول عرض ديناميكي.</div>'}`;
+  const [r, pgR, plR, blkR] = await Promise.all([
+    safeQuery(() => sb.from('menu_promotions').select('id,name_ar,description_ar,image_url,promotion_type,promotion_page_id,target_item_id,reward_item_id,reward_addon_id,value,max_discount,min_order,starts_at,ends_at,max_uses,used_count,is_active,priority,stackable,created_at').order('priority',{ascending:false}).order('created_at',{ascending:false}).limit(300), []),
+    safeQuery(() => sb.from('promotion_pages').select('id,title_ar').order('sort_order'), []),
+    safeQuery(() => sb.from('promotion_display_placements').select('promotion_id,placement_type,block_id,is_active').order('sort_order'), []),
+    safeQuery(() => sb.from('homepage_blocks').select('id,title_ar'), [])
+  ]);
+  const data = r.data || [], pageMap = new Map((pgR.data||[]).map(p=>[p.id,p.title_ar]));
+  const blockMap = new Map((blkR.data||[]).map(b=>[b.id,b.title_ar]));
+  const placementsByOffer = new Map(); (plR.data||[]).forEach(p=>{const a=placementsByOffer.get(p.promotion_id)||[];a.push(p);placementsByOffer.set(p.promotion_id,a);});
+  const placementName = p => p.placement_type==='homepage_block' ? `بلوك: ${blockMap.get(p.block_id)||'بلوك غير معروف'}` : (PROMO_PLACEMENTS[p.placement_type]||p.placement_type);
+  v.innerHTML = `<div class="set-card" style="margin-bottom:14px"><h3>🎁 إدارة العروض التي تظهر للعميل</h3><p style="font-size:13px;line-height:1.9;color:var(--ink2)">هنا تنشئ «العرض الحقيقي» الذي يطبق الخصم على الطلب. بعد ذلك تربطه بصفحة حملة، ثم تحدد البلوك الذي يعرض بطاقة هذه الصفحة للعميل. العرض شيء، وصفحة الحملة شيء آخر، والبلوك مجرد مكان عرض. كل بطاقة بالأسفل توضح لك اسم الصفحة والبلوك التابع لهما العرض.</p><div class="head"><span>${data.length} عرض محفوظ</span><button class="btn pri" id="addoffer">+ إنشاء عرض</button></div></div>
+    ${data.length ? `<div class="set-grid">${data.map(x=>`<article class="set-card" data-id="${x.id}" style="display:flex;flex-direction:column;gap:10px">${x.image_url?`<img src="${esc(x.image_url)}" alt="" loading="lazy" style="width:100%;height:140px;object-fit:cover;border-radius:12px">`:''}<div style="display:flex;align-items:start;justify-content:space-between;gap:8px"><h3>${esc(x.name_ar)}</h3><span class="badge">${!x.is_active?'متوقف':(x.starts_at&&new Date(x.starts_at)>new Date()?'قادم':(x.ends_at&&new Date(x.ends_at)<new Date()?'منتهي':(x.max_uses!=null&&Number(x.used_count||0)>=Number(x.max_uses)?'اكتمل الاستخدام':'نشط')))}</span></div><p style="color:var(--ink2);font-size:13px">${esc(x.description_ar||'لا يوجد وصف مضاف')}</p><div><b>${esc(({percent:'خصم نسبة',fixed:'خصم مبلغ',free_delivery:'توصيل مجاني',free_item:'صنف مجاني',free_addon:'إضافة مجانية'})[x.promotion_type]||x.promotion_type)}</b> · ${['percent','fixed'].includes(x.promotion_type)?(x.promotion_type==='percent'?`${x.value}%` : money(x.value)):'بدون قيمة نقدية'}</div><div style="border:1px solid var(--line);border-radius:10px;padding:10px;background:var(--bg2,rgba(127,127,127,.06));font-size:13px;line-height:1.9"><b>📄 تابع لصفحة:</b> ${esc(x.promotion_page_id ? (pageMap.get(x.promotion_page_id)||'صفحة غير موجودة') : 'غير مربوط بصفحة')}<br><b>📍 يظهر في:</b> ${x.promotion_page_id ? 'داخل صفحة الحملة فقط' : ((placementsByOffer.get(x.id)||[]).length ? (placementsByOffer.get(x.id)||[]).map(p=>esc(placementName(p))+(p.is_active?'':' (موقوف)')).join('، ') : 'لم يتم تحديد بلوك أو مكان ظهور')}</div><small>الاستخدام: ${x.used_count||0}${x.max_uses?' / '+x.max_uses:' / بلا حد'} · الأولوية: ${x.priority||0}</small><small>البداية: ${x.starts_at?dtShort(x.starts_at):'فور التفعيل'} · النهاية: ${x.ends_at?dtShort(x.ends_at):'بدون انتهاء'}</small><div class="row"><button class="btn pri sm" data-offer-edit>✏️ تعديل</button><button class="btn out sm" data-offer-toggle>${x.is_active?'إيقاف العرض':'تفعيل العرض'}</button></div></article>`).join('')}</div>` : '<div class="empty">لا توجد عروض بعد. اضغط «إنشاء عرض» لإضافة أول عرض ديناميكي.</div>'}`;
   $('addoffer').onclick = () => openPromotionForm(null);
   v.querySelectorAll('[data-offer-edit]').forEach(b=>b.onclick=()=>openPromotionForm(data.find(z=>z.id===b.closest('[data-id]').dataset.id)));
   v.querySelectorAll('[data-offer-toggle]').forEach(b=>b.onclick=async()=>{const x=data.find(z=>z.id===b.closest('[data-id]').dataset.id); const {error}=await sb.from('menu_promotions').update({is_active:!x.is_active,updated_at:new Date().toISOString()}).eq('id',x.id); if(error)return fail(error); toast('تم تحديث العرض','ok');go('offers');});
 };
+// أي عرض مرتبط بصفحة حملة يُعرض داخل الصفحة فقط؛ نحذف روابط عرضه القديمة من الرئيسية والسلة.
+async function clearPromotionOutsidePage(offerId) {
+  // نعطّل كل طرق العرض الخارجية، سواء كان الربط محفوظًا في promotion_id أو target_type/target_id.
+  // لا نحذف السجلات؛ فقط نوقف ظهور العرض خارج صفحة حملته.
+  const cleanup = await Promise.all([
+    sb.from('promotion_display_placements').update({ is_active: false }).eq('promotion_id', offerId),
+    sb.from('homepage_block_items').update({ is_active: false }).eq('item_type', 'promotion').eq('target_id', offerId),
+    sb.from('homepage_banners').update({ is_active: false, promotion_id: null }).eq('promotion_id', offerId),
+    sb.from('homepage_banners').update({ is_active: false }).eq('target_type', 'promotion').eq('target_id', offerId),
+    sb.from('homepage_announcements').update({ is_active: false, promotion_id: null }).eq('promotion_id', offerId),
+    sb.from('homepage_announcements').update({ is_active: false }).eq('target_type', 'promotion').eq('target_id', offerId)
+  ]);
+  const failed = cleanup.find(r => r.error);
+  if (failed?.error) throw failed.error;
+}
+
 async function openPromotionForm(x) {
-  const [itemsResult, addonsResult] = await Promise.all([
+  const [itemsResult, addonsResult, pagesResult, linkedResult] = await Promise.all([
     sb.from('menu_items').select('id,name_ar,is_available,is_secret').eq('is_available', true).eq('is_secret', false).order('name_ar'),
-    sb.from('addons').select('id,name_ar,is_available').eq('is_available', true).order('name_ar')
+    sb.from('addons').select('id,name_ar,is_available').eq('is_available', true).order('name_ar'),
+    sb.from('promotion_pages').select('id,title_ar').order('sort_order'),
+    x ? sb.from('menu_promotion_items').select('item_id').eq('promotion_id', x.id) : Promise.resolve({data:[],error:null})
   ]);
   if (itemsResult.error) return fail(itemsResult.error, 'تعذر تحميل قائمة المنتجات');
   if (addonsResult.error) return fail(addonsResult.error, 'تعذر تحميل قائمة الإضافات');
+  if (pagesResult.error) return fail(pagesResult.error, 'تعذر تحميل صفحات الحملات');
+  if (linkedResult.error) return fail(linkedResult.error, 'تعذر تحميل منتجات العرض الحالية');
   const offerItems = itemsResult.data || [];
   const offerAddons = addonsResult.data || [];
+  const offerPages = pagesResult.data || [];
+  const selectedOfferItemIds = new Set((linkedResult.data || []).map(r => String(r.item_id)));
+  if (x?.target_item_id) selectedOfferItemIds.add(String(x.target_item_id));
+  const pageOptions = `<option value="">— لا تربط العرض بصفحة الآن —</option>` + offerPages.map(pg => `<option value="${pg.id}" ${x?.promotion_page_id===pg.id?'selected':''}>${esc(pg.title_ar)}</option>`).join('');
   const itemOptions = (selected, optionalLabel) => `<option value="">${optionalLabel}</option>` + offerItems.map(it=>`<option value="${it.id}" ${selected===it.id?'selected':''}>${esc(it.name_ar)}</option>`).join('');
   const addonOptions = (selected, optionalLabel) => `<option value="">${optionalLabel}</option>` + offerAddons.map(it=>`<option value="${it.id}" ${selected===it.id?'selected':''}>${esc(it.name_ar)}</option>`).join('');
-  openModal(`<h2>${x?'تعديل':'إضافة'} عرض <button class="close" onclick="closeModal()">✕</button></h2>
+  openModal(`<h2>${x?'تعديل':'إنشاء'} عرض فعلي <button class="close" onclick="closeModal()">✕</button></h2><div class="set-card" style="margin-bottom:12px;padding:12px;line-height:1.9"><b>أنت الآن تنشئ الخصم الذي سيُطبق على الطلب.</b><br><small>هذا ليس البلوك وليس تصميم صفحة الحملة. سنحدد الصفحة التابعة له هنا، ثم مكان ظهور بطاقة الصفحة من إعدادات ربط العرض.</small></div><h3 style="margin:14px 0 6px">1) بيانات العرض</h3>
     <label>اسم العرض * <small>العنوان الذي يراه العميل في البانر وبطاقة العرض</small></label><input title="اكتب اسمًا واضحًا وقصيرًا يشجع العميل على الطلب" id="of_name" maxlength="100" value="${esc(x?.name_ar||'')}">
     <label>الوصف الذي سيظهر للعميل</label><input id="of_desc" maxlength="500" title="شرح قصير لشروط العرض وفائدته" value="${esc(x?.description_ar||'')}">
-    ${imgField('of_image', 'صورة البانر (اختياري)', 'offers', x?.image_url)}
-    <label>نوع العرض * <small>حدد طريقة استفادة العميل من العرض</small></label><select title="نسبة مئوية أو مبلغ ثابت أو توصيل مجاني أو صنف/إضافة مجانية" id="of_type"><option value="percent">خصم نسبة</option><option value="fixed">خصم مبلغ</option><option value="free_delivery">توصيل مجاني</option><option value="free_item">صنف مجاني</option><option value="free_addon">إضافة مجانية</option></select>
+    <h3 style="margin:16px 0 6px">2) الصفحة التي يتبع لها هذا العرض</h3><div class="set-card" style="margin:8px 0 12px;padding:12px"><h3>📄 اختر صفحة الحملة</h3><small style="display:block;color:var(--ink2);line-height:1.8;margin-bottom:6px">اختار الصفحة التي أنشأتها مسبقًا. عند حفظ العرض سيرتبط بها مباشرة، وسيظهر كارت الصفحة للعميل عندما يكون بها عرض نشط.</small><select id="of_page">${pageOptions}</select></div>
+    ${imgField('of_image', 'صورة العرض أو الكوبون (تظهر مع العرض، وليست بانر الرئيسية)', 'offers', x?.image_url)}
+    <h3 style="margin:16px 0 6px">3) هل العرض مرتبط بمنتجات من المنيو؟</h3>
+    <div class="set-card" style="padding:12px;margin:8px 0 14px">
+      <label style="display:flex;align-items:flex-start;gap:9px;padding:8px 0"><input type="radio" name="of_link_mode" id="of_link_products" value="products" ${selectedOfferItemIds.size?'checked':''}><span><b>عرض على منتجات محددة</b><small style="display:block;color:var(--ink2);line-height:1.8">اختار منتجات من المنيو؛ هذه المنتجات فقط هي التي تظهر داخل صفحة الحملة ويرتبط بها العرض.</small></span></label>
+      <label style="display:flex;align-items:flex-start;gap:9px;padding:8px 0"><input type="radio" name="of_link_mode" id="of_link_general" value="general" ${selectedOfferItemIds.size?'':'checked'}><span><b>عرض مستقل لا يحتاج منتجات من المنيو</b><small style="display:block;color:var(--ink2);line-height:1.8">مثال: خصم عام على الطلب أو توصيل مجاني أو حملة/كوبون مستقل. لن نطلب منك اختيار منتجات، ولن نربطه بأصناف المنيو.</small></span></label>
+    </div>
+    <div id="of_products_panel" class="set-card" style="padding:12px;margin:8px 0 14px;${selectedOfferItemIds.size?'':'display:none'}"><b>المنتجات التي يشملها العرض وتظهر في صفحة الحملة</b><small style="display:block;color:var(--ink2);line-height:1.8;margin:4px 0 10px">اختار المنتجات المطلوبة فقط. لن تُضاف بقية منتجات المنيو تلقائيًا.</small>
+      <input id="of_item_search" type="search" placeholder="ابحث عن منتج بالاسم..." style="width:100%;margin-bottom:8px">
+      <div id="of_items_count" style="font-size:12px;color:var(--ink2);margin-bottom:6px">تم اختيار ${selectedOfferItemIds.size} منتج</div>
+      <div id="of_items_list" style="max-height:230px;overflow:auto;border:1px solid var(--line);border-radius:10px;padding:6px">
+        ${offerItems.map(it=>`<label data-offer-item-row="${esc(it.name_ar)}" style="display:flex;align-items:center;gap:9px;padding:8px 5px;border-bottom:1px solid var(--line);cursor:pointer"><input type="checkbox" class="of-item-check" value="${it.id}" ${selectedOfferItemIds.has(String(it.id))?'checked':''}><span>${esc(it.name_ar)}</span></label>`).join('') || '<div class="empty">لا توجد منتجات متاحة</div>'}
+      </div>
+    </div>
+    <h3 style="margin:16px 0 6px">4) طريقة الخصم وشروطه</h3><label>نوع العرض * <small>حدد طريقة استفادة العميل من العرض</small></label><select title="نسبة مئوية أو مبلغ ثابت أو توصيل مجاني أو صنف/إضافة مجانية" id="of_type"><option value="percent">خصم نسبة</option><option value="fixed">خصم مبلغ</option><option value="free_delivery">توصيل مجاني</option><option value="free_item">صنف مجاني</option><option value="free_addon">إضافة مجانية</option></select>
     <label>قيمة الخصم <small>النسبة من 1 إلى 100، أو مبلغ بالجنيه؛ العروض المجانية قيمتها صفر</small></label><input id="of_value" type="number" min="0" step="0.5" value="${x?.value??0}">
     <label>أقصى خصم بالجنيه (اختياري) <small>سقف الخصم عند اختيار نسبة مئوية</small></label><input id="of_max_discount" type="number" min="0" value="${x?.max_discount??''}">
     <label>عدد مرات الاستخدام الكلي (اختياري) <small>اتركه فارغًا بلا حد؛ لا يقل عن مرات الاستخدام الحالية</small></label><input id="of_max_uses" type="number" min="1" value="${x?.max_uses??''}">
@@ -2739,11 +2784,48 @@ async function openPromotionForm(x) {
     <label>المنتج المستهدف <small>اختياري؛ اتركه على «كل المنتجات» لو العرض عام</small></label><select id="of_target">${itemOptions(x?.target_item_id, 'كل المنتجات')}</select>
     <label>المنتج المجاني <small>مطلوب فقط عند اختيار نوع «صنف مجاني»</small></label><select id="of_reward_item">${itemOptions(x?.reward_item_id, 'اختر المنتج المجاني')}</select>
     <label>الإضافة المجانية <small>مطلوبة فقط عند اختيار نوع «إضافة مجانية»</small></label><select id="of_reward_addon">${addonOptions(x?.reward_addon_id, 'اختر الإضافة المجانية')}</select>
-    <label>أولوية العرض <small>الأعلى يظهر أولًا في السلايدر</small></label><input id="of_priority" type="number" value="${x?.priority??0}">
+    <h3 style="margin:16px 0 6px">5) التحكم في التفعيل والترتيب</h3><label>أولوية العرض <small>الأعلى يظهر أولًا في السلايدر</small></label><input id="of_priority" type="number" value="${x?.priority??0}">
     <label title="عند إيقاف العرض لن يظهر للعميل حتى لو كانت تواريخه سارية"><input id="of_active" type="checkbox" ${x?.is_active?'checked':''}> العرض نشط</label>
     <div class="row"><button class="btn pri big" id="of_save">حفظ العرض</button><button class="btn out big" onclick="closeModal()">إلغاء</button></div>`);
   if(x) $('of_type').value=x.promotion_type;
-  $('of_save').onclick=async()=>{const name_ar=$('of_name').value.trim(),value=parseNumber($('of_value').value),min_order=parseNumber($('of_min').value)||0,imageUrl=$('of_image').value.trim();if(!name_ar||value<0)return toast('أدخل اسمًا وقيمة صحيحة','err');if(imageUrl&&!/^https:\/\//i.test(imageUrl))return toast('رابط صورة البانر يجب أن يبدأ بـ https://','err');const promotion_type=$('of_type').value; if((promotion_type==='percent' && !(value>0 && value<=100)) || (promotion_type==='fixed' && !(value>0)) || (['free_delivery','free_item','free_addon'].includes(promotion_type) && value!==0)) return toast('راجع قيمة العرض حسب نوعه','err'); if(promotion_type==='free_item'&&!$('of_reward_item').value)return toast('حدد المنتج المجاني من إعدادات العرض','err'); if(promotion_type==='free_addon'&&!$('of_reward_addon').value)return toast('حدد الإضافة المجانية من إعدادات العرض','err'); const maxUsesInput=parseNumber($('of_max_uses').value); if(maxUsesInput>0&&x&&maxUsesInput<x.used_count)return toast('حد الاستخدام أقل من مرات الاستخدام الحالية','err'); const payload={name_ar,description_ar:$('of_desc').value.trim()||null,image_url:$('of_image').value.trim()||null,promotion_type,value,min_order,priority:parseInt($('of_priority').value,10)||0,is_active:$('of_active').checked,max_discount:parseNumber($('of_max_discount').value)>0?parseNumber($('of_max_discount').value):null,target_item_id:$('of_target').value||null,reward_item_id:promotion_type==='free_item'?($('of_reward_item').value||null):null,reward_addon_id:promotion_type==='free_addon'?($('of_reward_addon').value||null):null,max_uses:parseNumber($('of_max_uses').value)>0?parseNumber($('of_max_uses').value):null,starts_at:$('of_start').value?new Date($('of_start').value+'T00:00:00').toISOString():null,ends_at:$('of_end').value?new Date($('of_end').value+'T23:59:59').toISOString():null,updated_at:new Date().toISOString()}; if(payload.starts_at&&payload.ends_at&&payload.ends_at<payload.starts_at)return toast('تاريخ الانتهاء قبل البداية','err'); const q=x?await sb.from('menu_promotions').update(payload).eq('id',x.id):await sb.from('menu_promotions').insert(payload);if(q.error)return fail(q.error);closeModal();toast('تم حفظ العرض','ok');go('offers');};
+  const refreshOfferItemCount = () => { const n = [...document.querySelectorAll('.of-item-check:checked')].length; $('of_items_count').textContent = `تم اختيار ${n} منتج`; };
+  const refreshOfferLinkMode = () => { $('of_products_panel').style.display = $('of_link_products').checked ? 'block' : 'none'; };
+  $('of_link_products').onchange=refreshOfferLinkMode; $('of_link_general').onchange=refreshOfferLinkMode;
+  $('of_item_search').oninput = () => { const q=$('of_item_search').value.trim().toLowerCase(); document.querySelectorAll('[data-offer-item-row]').forEach(row=>{row.style.display=row.dataset.offerItemRow.toLowerCase().includes(q)?'flex':'none';}); };
+  document.querySelectorAll('.of-item-check').forEach(ch=>ch.onchange=refreshOfferItemCount);
+  $('of_save').onclick=async()=>{
+    const linkMode=$('of_link_products').checked?'products':'general';
+    const selectedItemIds=[...document.querySelectorAll('.of-item-check:checked')].map(ch=>ch.value);
+    const selectedPageId=$('of_page').value;
+    if(!selectedPageId)return toast('اختار صفحة الحملة التي سيظهر العرض بداخلها','err');
+    if(linkMode==='products'&&!selectedItemIds.length)return toast('اختار منتجًا واحدًا على الأقل، أو غيّر الاختيار إلى عرض مستقل','err');
+    const name_ar=$('of_name').value.trim(),value=parseNumber($('of_value').value),min_order=parseNumber($('of_min').value)||0,imageUrl=$('of_image').value.trim();
+    if(!name_ar||value<0)return toast('أدخل اسمًا وقيمة صحيحة','err');
+    if(imageUrl&&!/^https:\/\//i.test(imageUrl))return toast('رابط صورة العرض يجب أن يبدأ بـ https://','err');
+    const promotion_type=$('of_type').value;
+    if((promotion_type==='percent' && !(value>0 && value<=100)) || (promotion_type==='fixed' && !(value>0)) || (['free_delivery','free_item','free_addon'].includes(promotion_type) && value!==0)) return toast('راجع قيمة العرض حسب نوعه','err');
+    if(promotion_type==='free_item'&&!$('of_reward_item').value)return toast('حدد المنتج المجاني من إعدادات العرض','err');
+    if(promotion_type==='free_addon'&&!$('of_reward_addon').value)return toast('حدد الإضافة المجانية من إعدادات العرض','err');
+    const maxUsesInput=parseNumber($('of_max_uses').value);
+    if(maxUsesInput>0&&x&&maxUsesInput<x.used_count)return toast('حد الاستخدام أقل من مرات الاستخدام الحالية','err');
+    const payload={name_ar,description_ar:$('of_desc').value.trim()||null,image_url:$('of_image').value.trim()||null,promotion_page_id:selectedPageId,promotion_scope:'items',target_category_id:null,promotion_type,value,min_order,priority:parseInt($('of_priority').value,10)||0,is_active:$('of_active').checked,max_discount:parseNumber($('of_max_discount').value)>0?parseNumber($('of_max_discount').value):null,target_item_id:null,reward_item_id:promotion_type==='free_item'?($('of_reward_item').value||null):null,reward_addon_id:promotion_type==='free_addon'?($('of_reward_addon').value||null):null,max_uses:parseNumber($('of_max_uses').value)>0?parseNumber($('of_max_uses').value):null,starts_at:$('of_start').value?new Date($('of_start').value+'T00:00:00').toISOString():null,ends_at:$('of_end').value?new Date($('of_end').value+'T23:59:59').toISOString():null,updated_at:new Date().toISOString()};
+    if(payload.starts_at&&payload.ends_at&&payload.ends_at<payload.starts_at)return toast('تاريخ الانتهاء قبل البداية','err');
+    const q=x?await sb.from('menu_promotions').update(payload).eq('id',x.id):await sb.from('menu_promotions').insert(payload).select('id').single();
+    if(q.error)return fail(q.error);
+    const savedOfferId=x?.id||q.data?.id;
+    if(!savedOfferId)return toast('تم حفظ بيانات العرض لكن لم نتمكن من تحديد رقمه لربط المنتجات','err');
+    const del=await sb.from('menu_promotion_items').delete().eq('promotion_id',savedOfferId);
+    if(del.error)return fail(del.error,'تم حفظ بيانات العرض لكن تعذر تحديث ارتباط المنتجات');
+    if(linkMode==='products'){
+      const links=await sb.from('menu_promotion_items').insert(selectedItemIds.map(item_id=>({promotion_id:savedOfferId,item_id})));
+      if(links.error)return fail(links.error,'تم حفظ بيانات العرض لكن تعذر حفظ المنتجات المختارة');
+    }
+    try { await clearPromotionOutsidePage(savedOfferId); }
+    catch(e) { return fail(e,'تم حفظ العرض وربطه بصفحة الحملة، لكن تعذر إزالة ربطه القديم من الرئيسية. راجع صلاحيات جداول أماكن الظهور والبلوكات.'); }
+    closeModal();
+    toast(linkMode==='products'?'تم حفظ العرض ومنتجاته داخل صفحة الحملة فقط، وإزالة ظهوره من الرئيسية':'تم حفظ العرض المستقل داخل صفحة الحملة فقط، وإزالة ظهوره من الرئيسية','ok');
+    go('offers');
+  };
 }
 
 /* ═══════════════════════════════════════════════════
@@ -2878,9 +2960,17 @@ async function laOpen(offerId) {
         await hpUpdate('menu_promotions', offerId, { promotion_scope: scope, target_category_id: scope === 'category' ? cat : null });
         toast('تم حفظ النطاق في قاعدة البيانات', 'ok');
       } else if (act === 'save-page') {
-        await hpUpdate('menu_promotions', offerId, { promotion_page_id: $('la_page').value || null });
-        toast('تم حفظ صفحة الحملة', 'ok');
+        const selectedPageId = $('la_page').value || null;
+        await hpUpdate('menu_promotions', offerId, { promotion_page_id: selectedPageId });
+        promo.promotion_page_id = selectedPageId;
+        if (selectedPageId) {
+          await clearPromotionOutsidePage(offerId);
+          toast('تم ربط العرض بالصفحة وإزالة كل أماكن ظهوره الخارجية؛ سيظهر داخل صفحة الحملة فقط', 'ok');
+        } else {
+          toast('تم إلغاء ربط صفحة الحملة', 'ok');
+        }
       } else if (act === 'pl-add') {
+        if ($('la_page').value) throw new Error('هذا العرض مربوط بصفحة حملة، لذلك لا يمكن إضافته للرئيسية أو السلة. ألغِ ربط الصفحة أولًا إذا أردت عرضه في مكان آخر.');
         const type = $('la_pl_type').value;
         const blk = type === 'homepage_block' ? ($('la_pl_blk').value || null) : null;
         if (type === 'homepage_block' && !blk) throw new Error('اختر البلوك الذي سيظهر فيه العرض');
@@ -2895,6 +2985,7 @@ async function laOpen(offerId) {
         toast('تم تحديث الترتيب', 'ok');
       } else if (act === 'pl-toggle') {
         const p = placements.find(x => x.id === id);
+        if (!p.is_active && $('la_page').value) throw new Error('لا يمكن تفعيل موضع خارجي لعرض مربوط بصفحة حملة. ألغِ ربط الصفحة أولًا إذا أردت عرضه خارجها.');
         await hpUpdate('promotion_display_placements', id, { is_active: !p.is_active });
         toast('تم التحديث', 'ok');
       } else if (act === 'pl-del') {
@@ -3031,11 +3122,13 @@ function laPageEditor(p) {
     <label>العنوان *</label><input id="lp_title" maxlength="120" value="${esc(r.title_ar)}">
     <label>العنوان الفرعي</label><input id="lp_sub" maxlength="160" value="${esc(r.subtitle_ar || '')}">
     <label>الوصف</label><textarea id="lp_desc" maxlength="600">${esc(r.description_ar || '')}</textarea>
-    <label>صورة البطاقة</label>
+    <label>صورة بطاقة الحملة — تظهر في الكارت الصغير داخل البلوكات</label>
+    <small style="display:block;color:var(--ink2);margin:-4px 0 6px">استخدم صورة مربعة أو قريبة من المربع؛ هذه ليست صورة الغلاف داخل الصفحة.</small>
     <input type="hidden" id="lp_card" value="${esc(r.card_image_url || '')}">
     <input type="file" id="lp_card_file" accept="image/jpeg,image/png,image/webp" style="display:none">
     <div id="lp_card_box" style="margin-top:4px"></div>
-    <label>صورة الغلاف</label>
+    <label>صورة غلاف صفحة الحملة — تظهر بعد أن يفتح العميل صفحة الحملة</label>
+    <small style="display:block;color:var(--ink2);margin:-4px 0 6px">هذه الصورة لا تُستخدم كصورة الكارت في الصفحة الرئيسية.</small>
     <input type="hidden" id="lp_cover" value="${esc(r.cover_image_url || '')}">
     <input type="file" id="lp_cover_file" accept="image/jpeg,image/png,image/webp" style="display:none">
     <div id="lp_cover_box" style="margin-top:4px"></div>
@@ -5261,13 +5354,50 @@ VIEWS.health = async v => {
    ═══════════════════════════════════════════════════ */
 const HP_TABS = [['blocks','🧱 البلوكات'], ['banners','🖼️ البنرات'], ['announcements','📢 الإعلانات النصية']];
 const HP_BLOCK_TYPES = {
-  product_carousel:'شريط منتجات', campaign_hero:'واجهة حملة', promo_banner:'بانر ترويجي',
-  text_promo:'نص ترويجي', category_grid:'شبكة تصنيفات', product_grid:'شبكة منتجات', promotion_cards:'بطاقات عروض'
+  campaign_hero:'بانر حملة داخل بلوك (قديم)',
+  promotion_cards:'كروت العروض الأفقية',
+  promo_banner:'لافتة عروض إضافية',
+  product_carousel:'شريط منتجات تختارها',
+  products_discounted:'منتجات عليها خصم',
+  products_new:'منتجات جديدة',
+  product_grid:'شبكة منتجات',
+  category_grid:'شبكة التصنيفات',
+  text_promo:'بلوك نص إعلاني'
 };
-const HP_LAYOUTS = { text:'نص', grid:'شبكة', cards:'بطاقات', carousel:'شريط متحرك', banner:'بانر' };
-const HP_ITEM_TYPES = { product:'منتج', category:'تصنيف', promotion:'عرض', promotion_page:'صفحة حملة (بطاقة تفتح شاشة فيها عروض)' };
+// شرح واضح لكل نوع داخل شاشة الإنشاء. الأوصاف تشرح الوظائف التي يدعمها تطبيق العميل حاليًا.
+const HP_BLOCK_TYPE_HELP = {
+  campaign_hero:{icon:'🖼️',about:'نوع قديم داخل البلوكات. البانر الرئيسي المعتمد يتم إنشاؤه من تبويب البنرات.',items:'لا يحتاج إضافة منتجات أو عناصر داخله.',layout:'بانر',where:'استخدم تبويب البنرات للبانر الرئيسي.'},
+  promotion_cards:{icon:'🎟️',about:'مجموعة كروت للعروض أو صفحات الحملات. كل كارت يفتح العرض أو صفحة الحملة المرتبطة به.',items:'أضف عروضًا أو صفحات حملات من قائمة العناصر.',layout:'شبكة أو بطاقات',where:'مناسب لعرض كروت العروض في الصفحة الرئيسية.'},
+  promo_banner:{icon:'📣',about:'لافتة أو أكثر للعروض الإضافية، ويمكن عرض أكثر من لافتة داخل نفس البلوك.',items:'أضف العروض التي تريد الإعلان عنها؛ الضغط على اللافتة يفتح العرض.',layout:'بانر أو شريط',where:'يمكن وضعها في مواضع الصفحة الرئيسية التي يدعمها تطبيق العميل حاليًا.'},
+  product_carousel:{icon:'🍔',about:'شريط أفقي من المنتجات التي تختارها بنفسك، ويمكن للعميل التمرير بينها.',items:'أضف المنتجات يدويًا من قائمة المنتجات.',layout:'شريط أفقي',where:'مناسب لأقسام مثل منتجات قد تعجبك.'},
+  products_discounted:{icon:'🏷️',about:'يعرض المنتجات التي لديها سعر بيع مخفّض بالفعل مقارنة بالسعر الأصلي.',items:'يمكنك اختيار منتجات محددة؛ وإذا تركت القائمة فارغة يعرض التطبيق المنتجات التي عليها خصم تلقائيًا.',layout:'شريط أفقي أو شبكة',where:'مناسب لقسم عروض وخصومات المنتجات.'},
+  products_new:{icon:'✨',about:'قسم مخصص لتقديم المنتجات الجديدة للعملاء.',items:'اختر المنتجات الجديدة يدويًا من قائمة المنتجات. قاعدة البيانات الحالية لا تحتوي على علامة تلقائية للمنتج الجديد.',layout:'شريط أفقي أو شبكة',where:'مناسب لقسم وصل حديثًا أو جديد عندنا.'},
+  product_grid:{icon:'▦',about:'مجموعة منتجات تظهر في شبكة، بدل الشريط الأفقي.',items:'أضف المنتجات التي تريد عرضها يدويًا. الخصومات والأسعار الفعلية تظهر من بيانات المنتج؛ أما اختيار المنتجات الجديدة تلقائيًا فيحتاج ربطًا إضافيًا.',layout:'شبكة أو بطاقات',where:'مناسب لقوائم المنتجات داخل الصفحة الرئيسية.'},
+  category_grid:{icon:'🗂️',about:'كروت للتصنيفات حتى ينتقل العميل إلى التصنيف عند الضغط عليه.',items:'أضف التصنيفات من القائمة.',layout:'شبكة أو بطاقات',where:'مناسب لتسهيل الوصول لأقسام المنيو.'},
+  text_promo:{icon:'✍️',about:'قسم إعلاني نصي بعنوان كبير ووصف، ويمكن تخصيص ألوانه.',items:'لا يحتاج إضافة منتجات. نص الإعلان يُدار من إعدادات المحتوى المدعومة.',layout:'نصي أو بطاقة',where:'مناسب للرسائل والتنويهات التسويقية.'}
+};
+const HP_LAYOUTS = { text:'نص', grid:'شبكة', cards:'بطاقات', carousel:'شريط أفقي', banner:'بانر' };
+const HP_ITEM_TYPES = { product:'منتج', category:'تصنيف', promotion:'عرض أو كوبون', promotion_page:'صفحة حملة (تفتح شاشة العروض)' };
+// أنواع العناصر المسموح بها لكل وظيفة؛ تمنع ربط منتج داخل كارت عرض بالخطأ.
+const HP_BLOCK_ITEM_TYPES = {
+  campaign_hero: [],
+  promotion_cards: ['promotion','promotion_page'],
+  promo_banner: ['promotion'],
+  product_carousel: ['product'],
+  products_discounted: ['product'],
+  products_new: ['product'],
+  product_grid: ['product'],
+  category_grid: ['category'],
+  text_promo: []
+};
+const HP_BLOCK_LAYOUTS = {
+  campaign_hero: ['banner'], promotion_cards: ['cards','carousel','grid'],
+  promo_banner: ['banner','carousel'], product_carousel: ['carousel'],
+  products_discounted: ['carousel','grid','cards'], products_new: ['carousel','grid','cards'],
+  product_grid: ['grid','cards'], category_grid: ['grid','cards'], text_promo: ['text','cards']
+};
 const HP_BANNER_TARGETS = { url:'رابط خارجي', product:'منتج', category:'تصنيف', promotion:'عرض' };
-const HP_ANN_PLACEMENTS = { top:'أعلى الصفحة', below_hero:'أسفل الواجهة', between_blocks:'بين البلوكات', above_footer:'أعلى الفوتر' };
+const HP_ANN_PLACEMENTS = { top:'أعلى الصفحة الرئيسية', below_hero:'أسفل الواجهة الرئيسية', between_blocks:'بين بلوكات الرئيسية', above_footer:'أعلى الفوتر', cart:'أعلى شاشة السلة', rewards:'أعلى شاشة مكافآتي' };
 const HP_ANN_TARGETS = { none:'بدون وجهة', category:'تصنيف', promotion:'عرض' };
 const HP_FILTERS = [['all','الكل'], ['active','نشط'], ['upcoming','قادم'], ['expired','منتهٍ'], ['inactive','موقوف']];
 
@@ -5347,7 +5477,7 @@ async function hpLoadLookups() {
   const [items, cats, promos, pages, badges] = await Promise.all([
     sb.from('menu_items').select('id,name_ar,image_url').order('name_ar'),
     sb.from('categories').select('id,name_ar').order('name_ar'),
-    sb.from('menu_promotions').select('id,name_ar').order('name_ar'),
+    sb.from('menu_promotions').select('id,name_ar,image_url').order('name_ar'),
     sb.from('promotion_pages').select('id,title_ar,card_image_url').order('sort_order'),
     sb.from('display_badges').select('id,label_ar,icon,text_color,background_color,is_active,priority').order('priority')
   ]);
@@ -5461,7 +5591,8 @@ async function hpRenderBlocks(body, v) {
   const itemInfo = it => {
     const found = (lookups[it.item_type] || []).find(x => x.id === it.target_id);
     const img = it.image_override_url || (found && found.image_url) || null;
-    return { name: found ? found.name_ar : '(غير موجود)', img, missing: !found, type: HP_ITEM_TYPES[it.item_type] || it.item_type, active: it.is_active };
+    const imageSource = it.image_override_url ? 'صورة مخصصة لهذا العنصر' : ({ product:'صورة المنتج من المنيو', promotion:'صورة العرض من إعدادات العرض', promotion_page:'صورة الكارت من صفحة الحملة', category:'لا توجد صورة افتراضية للتصنيف' }[it.item_type] || 'الصورة الافتراضية للعنصر');
+    return { name: found ? found.name_ar : '(غير موجود)', img, imageSource, missing: !found, type: HP_ITEM_TYPES[it.item_type] || it.item_type, active: it.is_active };
   };
   const chip = (style, inner) => `<span style="display:inline-flex;align-items:center;gap:6px;padding:2px 8px 2px 2px;border:1px solid var(--line);border-radius:999px;font-size:12px;background:var(--sf);${style}">${inner}</span>`;
   const cardOf = b => {
@@ -5469,14 +5600,14 @@ async function hpRenderBlocks(body, v) {
     const pos = ordered.findIndex(x => x.id === b.id);
     const canMove = hpState.filter.blocks === 'all';
     const items = hpByOrder(itemsBy[b.id] || []).map(itemInfo);
-    const cover = b.image_url || (items.find(i => i.img) || {}).img || null;
+    const cover = (b.block_type === 'campaign_hero' ? b.image_url : null) || (items.find(i => i.img) || {}).img || null;
     const missing = items.filter(i => i.missing).length;
     const bId = (b.settings || {}).badge_id;
     const bd = bId ? (lookups.badge || []).find(x => x.id === bId) : null;
     const badgeChip = bd
       ? `<span style="display:inline-block;padding:2px 10px;border-radius:999px;font-weight:700;font-size:12px;color:${esc(bd.text_color || '#000')};background:${esc(bd.background_color || '#eee')}">${esc(bd.icon ? bd.icon + ' ' : '')}${esc(bd.label_ar)}</span>`
       : (bId ? '<span class="pay-badge" style="color:var(--err)">شارة محذوفة</span>' : '');
-    const preview = items.slice(0, 4).map(i => chip(i.missing ? 'border-color:var(--err);color:var(--err)' : (i.active ? '' : 'opacity:.6'), `${thumb(i.img, 24)}<span>${esc(i.name)}</span>`)).join('')
+    const preview = items.slice(0, 4).map(i => chip(i.missing ? 'border-color:var(--err);color:var(--err)' : (i.active ? '' : 'opacity:.6'), `${thumb(i.img, 24)}<span title="${esc(i.imageSource)}">${esc(i.name)}<small style="display:block;color:var(--ink2)">${esc(i.imageSource)}</small></span>`)).join('')
       + (items.length > 4 ? `<span style="font-size:12px;color:var(--ink2);align-self:center">+${items.length - 4}</span>` : '');
     return `<article class="set-card hp-block-card">
       <div class="hp-block-card__head">
@@ -5504,7 +5635,6 @@ async function hpRenderBlocks(body, v) {
           ${canMove ? `<button class="btn out sm" data-act="up" data-id="${b.id}" ${pos === 0 ? 'disabled' : ''} aria-label="تحريك لأعلى">↑</button><button class="btn out sm" data-act="down" data-id="${b.id}" ${pos === ordered.length - 1 ? 'disabled' : ''} aria-label="تحريك لأسفل">↓</button>` : ''}
         </div>
         <div class="hp-block-card__actions">
-          <button class="btn out sm" data-act="items" data-id="${b.id}">🧩 إدارة العناصر</button>
           <button class="btn out sm" data-act="edit" data-id="${b.id}">✏️ تعديل</button>
           <button class="btn out sm ${b.is_active ? 'wr' : 'ok'}" data-act="toggle" data-id="${b.id}">${b.is_active ? 'إيقاف' : 'تفعيل'}</button>
           <button class="btn out sm dng" data-act="delete" data-id="${b.id}">حذف</button>
@@ -5514,8 +5644,19 @@ async function hpRenderBlocks(body, v) {
   };
   body.innerHTML = `
     <div class="hp-block-toolbar">
-      <div><h3 style="margin:0 0 4px;font-size:17px">بلوكات الصفحة الرئيسية</h3><small style="color:var(--ink2)">رتّب الأقسام وحدد المحتوى الذي يظهر للعملاء.</small></div>
+      <div><h3 style="margin:0 0 4px;font-size:17px">بلوكات الصفحة الرئيسية</h3><small style="color:var(--ink2)">أنشئ البلوك وحدد عناصره وصورته وألوانه من نافذة واحدة.</small></div>
       <div class="hp-block-toolbar__actions"><button class="btn pri" id="hp-block-add">+ إنشاء بلوك</button><button class="btn out" id="hp-pages-btn">📄 صفحات الحملات</button></div>
+    </div>
+    <div class="set-card" style="margin:10px 0;padding:12px;line-height:1.9">
+      <b>🖼️ دليل الصور — كل صورة مكانها مختلف</b>
+      <ul style="margin:6px 0 0;padding-right:20px;font-size:12px;color:var(--ink2)">
+        <li><b>بانر الرئيسية:</b> من تبويب «البنرات»؛ صورة سطح المكتب وصورة الجوال للواجهة الرئيسية.</li>
+        <li><b>صفحة الحملة:</b> «صورة البطاقة» تظهر على كارت الحملة، و«صورة الغلاف» تظهر داخل صفحة الحملة بعد فتحها.</li>
+        <li><b>العرض أو الكوبون:</b> «صورة العرض» من إعدادات العروض؛ تظهر مع العرض عند استخدامه في كروت أو قوائم العروض.</li>
+        <li><b>المنتج:</b> صورته تأتي تلقائيًا من صورة المنتج في المنيو.</li>
+        <li><b>صورة مخصصة داخل البلوك:</b> ترفعها من عنصر البلوك نفسه لتكون بديلة عن صورته الافتراضية فقط.</li>
+        <li><b>صورة الإعلان:</b> من تبويب «الإعلانات النصية» وتخص موضع الإعلان المحدد، وليست بانر الرئيسية.</li>
+      </ul>
     </div>
     ${hpFilterBar('blocks')}
     <div class="hp-block-list">
@@ -5557,9 +5698,9 @@ async function hpRenderBlocks(body, v) {
   };
 }
 
-function hpBlockEditor(row, ordered, lookups, v) {
+async function hpBlockEditor(row, ordered, lookups, v) {
   const isNew = !row;
-  const r = row || { block_type: 'product_grid', layout_type: 'grid', is_active: true, title_ar: '', subtitle_ar: '', starts_at: null, ends_at: null, background_color: '', text_color: '', accent_color: '' };
+  const r = row || { block_type: 'product_grid', layout_type: 'grid', is_active: true, title_ar: '', subtitle_ar: '', starts_at: null, ends_at: null, background_color: '', text_color: '', accent_color: '', image_url: null };
   const curBadge = (r.settings || {}).badge_id || '';
   const others = ordered.filter(x => !row || x.id !== row.id);
   const prevBlock = row ? others.filter(x => x.sort_order <= row.sort_order).pop() : null;
@@ -5568,38 +5709,105 @@ function hpBlockEditor(row, ordered, lookups, v) {
   const posOpts = `<option value="first" ${defaultPos === 'first' ? 'selected' : ''}>أول الصفحة</option>`
     + others.map(x => `<option value="after:${x.id}" ${defaultPos === 'after:' + x.id ? 'selected' : ''}>بعد: ${esc(x.title_ar || '(بدون عنوان)')}</option>`).join('')
     + `<option value="last" ${defaultPos === 'last' ? 'selected' : ''}>آخر الصفحة</option>`;
+  let selected = [];
+  if (row) {
+    const q = await sb.from('homepage_block_items').select('*').eq('block_id', row.id).order('sort_order');
+    if (q.error) return fail(q.error, hpErrMsg(q.error));
+    selected = hpByOrder(q.data || []).map(x => ({ ...x, _existing: true }));
+  }
+  const renderSelected = () => selected.length ? selected.map((it, i) => {
+    const found = (lookups[it.item_type] || []).find(x => x.id === it.target_id);
+    const name = found ? found.name_ar : '(العنصر غير موجود)';
+    const imageHelp = it.item_type === 'product' ? 'الافتراضي: صورة المنتج من المنيو.' : it.item_type === 'promotion' ? 'الافتراضي: صورة العرض من إعدادات العروض.' : it.item_type === 'promotion_page' ? 'الافتراضي: صورة الكارت من صفحة الحملة.' : 'لا توجد صورة افتراضية مضمونة لهذا العنصر.';
+    const imageId = `hb_item_img_${i}`;
+    return `<div class="hp-selected-item" data-item-index="${i}" style="display:block;padding:10px;border:1px solid var(--line);border-radius:10px;margin:8px 0;background:var(--sf)">
+      <div style="display:flex;align-items:center;gap:8px"><div style="flex:1;min-width:0"><b>${esc(name)}</b><small style="display:block;color:var(--ink2)">${esc(HP_ITEM_TYPES[it.item_type] || it.item_type)}</small></div>
+      <button type="button" class="btn out sm" data-sel-act="up" data-idx="${i}" ${i===0?'disabled':''}>↑</button>
+      <button type="button" class="btn out sm" data-sel-act="down" data-idx="${i}" ${i===selected.length-1?'disabled':''}>↓</button>
+      <button type="button" class="btn out sm dng" data-sel-act="remove" data-idx="${i}">إزالة</button></div>
+      ${it.item_type !== 'product' ? `<label style="display:block;margin-top:10px">عنوان الكارت (اختياري — اتركه فارغًا لعرض الصورة فقط)</label><input id="hb_item_title_${i}" maxlength="120" value="${esc(it.title_override_ar || '')}" placeholder="بدون عنوان؛ صورة فقط">` : ''}
+      <div style="margin-top:8px">${imgField(imageId,'صورة مخصصة لهذا الكارت (اختياري)','homepage-block-items',it.image_override_url || '')}<small style="display:block;color:var(--ink2);line-height:1.7">${imageHelp} إذا رفعت صورة هنا فستكون هي المستخدمة بدل الصورة الافتراضية.</small></div>
+    </div>`;
+  }).join('') : '<div class="empty" style="padding:12px">لم تضف عناصر لهذا البلوك بعد.</div>';
   openModal(`<h2>${isNew ? 'إنشاء بلوك جديد' : 'تعديل البلوك'} <button class="close" onclick="closeModal()" aria-label="إغلاق">✕</button></h2>
-    <section class="hp-editor-section">
-      <h3>١. محتوى البلوك</h3><p>حدد نوع القسم وطريقة عرضه، ثم اكتب العنوان والوصف الذي سيظهر للعميل.</p>
+    <section class="hp-editor-section"><h3>١. نوع ومحتوى البلوك</h3>
       <div class="hp-editor-grid">
-        <div><label>نوع البلوك *</label><select id="hb_type">${Object.entries(HP_BLOCK_TYPES).map(([k, l]) => `<option value="${k}" ${r.block_type === k ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
-        <div><label>طريقة العرض *</label><select id="hb_layout">${Object.entries(HP_LAYOUTS).map(([k, l]) => `<option value="${k}" ${r.layout_type === k ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
+        <div><label>نوع البلوك — ماذا تريد أن تنشئ؟ *</label><select id="hb_type">${Object.entries(HP_BLOCK_TYPES).filter(([k])=>k!=='campaign_hero'||(!isNew&&r.block_type==='campaign_hero')).map(([k,l])=>`<option value="${k}" ${r.block_type===k?'selected':''}>${HP_BLOCK_TYPE_HELP[k]?.icon||'▪️'} ${l}</option>`).join('')}</select>
+          <div id="hb_type_help" style="margin-top:9px;padding:12px;border:1px solid var(--line);border-radius:12px;background:var(--bg2);line-height:1.8"></div>
+        </div>
+        <div><label>طريقة ترتيب المحتوى داخل البلوك *</label><select id="hb_layout"></select><small style="display:block;color:var(--ink2);margin-top:6px">شكل ترتيب العناصر، وليس نوع البلوك نفسه.</small></div>
       </div>
-      <label>عنوان البلوك</label><input id="hb_title" maxlength="120" value="${esc(r.title_ar || '')}" placeholder="مثال: الأكثر طلبًا">
-      <label>وصف مختصر (اختياري)</label><textarea id="hb_sub" maxlength="300" placeholder="اكتب وصفًا يظهر أسفل العنوان">${esc(r.subtitle_ar || '')}</textarea>
+      <label>العنوان الرئيسي</label><input id="hb_title" maxlength="120" value="${esc(r.title_ar||'')}" placeholder="مثال: منتجات قد تعجبك">
+      <label>العنوان الفرعي</label><textarea id="hb_sub" maxlength="300" placeholder="اكتب وصفًا مختصرًا">${esc(r.subtitle_ar||'')}</textarea>
+      <div id="hb_block_image_wrap">${imgField('hb_image','صورة البانر نفسه (تُستخدم فقط مع نوع بانر الحملة)','homepage-blocks',r.image_url)}<small style="display:block;color:var(--ink2);line-height:1.7">هذه ليست صورة كروت العروض أو المنتجات. صور الكروت تُؤخذ من العنصر المرتبط، ويمكنك وضع صورة بديلة لكل عنصر من قسم العناصر بالأسفل.</small></div>
       <label>شارة البلوك (اختياري)</label><select id="hb_badge">${badgeOpts}</select>
-      ${(lookups.badge || []).length ? '' : '<small style="display:block;color:var(--ink2);margin-top:4px">لا توجد شارات معرّفة بعد في جدول الشارات.</small>'}
     </section>
-    <section class="hp-editor-section">
-      <h3>٢. مكان وموعد الظهور</h3><p>حدد موضع البلوك في الصفحة، ويمكنك جدولة بداية ونهاية ظهوره.</p>
-      <label>مكان الظهور في الصفحة</label><select id="hb_pos">${posOpts}</select>
-      <div class="hp-editor-grid">
-        <div><label>بداية الظهور (اختياري)</label><input id="hb_start" type="datetime-local" value="${hpToLocal(r.starts_at)}"></div>
-        <div><label>نهاية الظهور (اختياري)</label><input id="hb_end" type="datetime-local" value="${hpToLocal(r.ends_at)}"></div>
-      </div>
+    <section class="hp-editor-section"><h3>٢. المنتجات والعناصر داخل البلوك</h3><p>اختر نوع العنصر ثم اختره من القائمة. يمكنك إضافة أكثر من عنصر وتغيير ترتيبها قبل الحفظ.</p>
+      <div id="hb_items_controls"><div class="hp-editor-grid"><div><label>نوع العنصر</label><select id="hb_item_type"></select></div><div><label>العنصر</label><select id="hb_item_target"></select></div></div>
+      <button type="button" class="btn out" id="hb_add_item">＋ إضافة للقائمة</button></div>
+      <div id="hb_items_note" style="margin-top:8px;color:var(--ink2);font-size:12px"></div>
+      <div id="hb_selected_list" style="margin-top:10px">${renderSelected()}</div>
     </section>
-    <section class="hp-editor-section">
-      <h3>٣. ألوان البلوك (اختياري)</h3><p>اترك اللون فارغًا لاستخدام ألوان التصميم الافتراضية.</p>
-      <div class="hp-editor-colors">
-        <div><label>الخلفية</label><input id="hb_bg" dir="ltr" placeholder="#FFFFFF" value="${esc(r.background_color || '')}"></div>
-        <div><label>لون النص</label><input id="hb_fg" dir="ltr" placeholder="#222222" value="${esc(r.text_color || '')}"></div>
-        <div><label>لون التمييز</label><input id="hb_ac" dir="ltr" placeholder="#D9401F" value="${esc(r.accent_color || '')}"></div>
-      </div>
+    <section class="hp-editor-section"><h3>٣. مكان وموعد الظهور</h3>
+      <label>مكان البلوك في ترتيب الصفحة الرئيسية</label><select id="hb_pos">${posOpts}</select>
+      <div class="hp-editor-grid"><div><label>بداية الظهور</label><input id="hb_start" type="datetime-local" value="${hpToLocal(r.starts_at)}"></div><div><label>نهاية الظهور</label><input id="hb_end" type="datetime-local" value="${hpToLocal(r.ends_at)}"></div></div>
     </section>
-    <section class="hp-editor-section"><h3>٤. حالة البلوك</h3>
-      <label class="toggle" style="margin:0"><span>إظهار البلوك للعملاء</span><input type="checkbox" id="hb_active" ${r.is_active ? 'checked' : ''}></label>
+    <section class="hp-editor-section"><h3>٤. ألوان وتصميم البلوك</h3><p>الألوان بصيغة HEX مثل #FFFFFF.</p>
+      <div class="hp-editor-colors"><div><label>الخلفية</label><input id="hb_bg" dir="ltr" placeholder="#FFFFFF" value="${esc(r.background_color||'')}"></div><div><label>لون النص</label><input id="hb_fg" dir="ltr" placeholder="#222222" value="${esc(r.text_color||'')}"></div><div><label>لون التمييز</label><input id="hb_ac" dir="ltr" placeholder="#D9401F" value="${esc(r.accent_color||'')}"></div></div>
     </section>
-    <div class="hp-editor-actions"><button class="btn pri big" id="hb_save">💾 حفظ البلوك</button><button class="btn out big" onclick="closeModal()">إلغاء</button></div>`);
+    <section class="hp-editor-section"><h3>٥. حالة البلوك</h3><label class="toggle" style="margin:0"><span>إظهار البلوك للعملاء</span><input type="checkbox" id="hb_active" ${r.is_active?'checked':''}></label></section>
+    <div class="hp-editor-actions"><button class="btn pri big" id="hb_save">💾 حفظ البلوك ومحتواه</button><button class="btn out big" onclick="closeModal()">إلغاء</button></div>`);
+
+  const updateBlockTypeHelp = () => {
+    const info = HP_BLOCK_TYPE_HELP[$('hb_type').value];
+    const imageWrap = $('hb_block_image_wrap');
+    if (imageWrap) imageWrap.style.display = $('hb_type').value === 'campaign_hero' ? '' : 'none';
+    const box = $('hb_type_help');
+    if (!info || !box) return;
+    box.innerHTML = `<div style="font-weight:900;margin-bottom:4px">${info.icon} ${HP_BLOCK_TYPES[$('hb_type').value]}</div><div>${info.about}</div><div style="margin-top:6px"><b>المحتوى:</b> ${info.items}</div><div><b>شكل العرض:</b> ${info.layout}</div><div><b>الاستخدام المقترح:</b> ${info.where}</div>`;
+  };
+  const fillLayouts = () => {
+    const allowed = HP_BLOCK_LAYOUTS[$('hb_type').value] || ['grid'];
+    const current = $('hb_layout').value || r.layout_type;
+    $('hb_layout').innerHTML = allowed.map(k => `<option value="${k}">${HP_LAYOUTS[k] || k}</option>`).join('');
+    $('hb_layout').value = allowed.includes(current) ? current : allowed[0];
+  };
+  const fillItemTypes = () => {
+    const allowed = HP_BLOCK_ITEM_TYPES[$('hb_type').value] || [];
+    const controls = $('hb_items_controls');
+    const note = $('hb_items_note');
+    controls.style.display = allowed.length ? '' : 'none';
+    note.textContent = allowed.length ? 'العناصر المتاحة لهذا النوع فقط تظهر هنا.' : 'هذا النوع لا يحتاج عناصر إضافية؛ يعتمد على الصورة والعنوان أو النص الذي تضيفه أعلاه.';
+    $('hb_item_type').innerHTML = allowed.map(k => `<option value="${k}">${HP_ITEM_TYPES[k]}</option>`).join('');
+    if (allowed.length && !allowed.includes($('hb_item_type').value)) $('hb_item_type').value = allowed[0];
+    fillTargets();
+  };
+  const fillTargets = () => {
+    const type = $('hb_item_type').value;
+    $('hb_item_target').innerHTML = (lookups[type] || []).map(x => `<option value="${x.id}">${esc(x.name_ar)}</option>`).join('') || '<option value="">لا توجد عناصر متاحة من هذا النوع</option>';
+  };
+  updateBlockTypeHelp();
+  fillLayouts();
+  fillItemTypes();
+  $('hb_type').onchange = () => { updateBlockTypeHelp(); fillLayouts(); fillItemTypes(); };
+  $('hb_item_type').onchange = fillTargets;
+  const syncSelectedImageValues = () => selected.forEach((it, i) => { const field = $(`hb_item_img_${i}`); if (field) it.image_override_url = field.value.trim() || null; const titleField = $(`hb_item_title_${i}`); if (titleField) it.title_override_ar = titleField.value.trim() || null; });
+  $('hb_add_item').onclick = () => {
+    syncSelectedImageValues();
+    const type = $('hb_item_type').value, target = $('hb_item_target').value;
+    if (!target) return toast('اختر عنصرًا صالحًا', 'err');
+    if (selected.some(x => x.item_type === type && x.target_id === target)) return toast('هذا العنصر مضاف بالفعل', 'err');
+    selected.push({ item_type: type, target_id: target, is_active: true, _existing: false });
+    $('hb_selected_list').innerHTML = renderSelected();
+  };
+  $('hb_selected_list').onclick = e => {
+    const b = e.target.closest('[data-sel-act]'); if (!b) return;
+    syncSelectedImageValues();
+    const i = Number(b.dataset.idx), act = b.dataset.selAct;
+    if (act === 'remove') selected.splice(i, 1);
+    else { const j = i + (act === 'up' ? -1 : 1); if (j < 0 || j >= selected.length) return; [selected[i], selected[j]] = [selected[j], selected[i]]; }
+    $('hb_selected_list').innerHTML = renderSelected();
+  };
 
   $('hb_save').onclick = async () => {
     const btn = $('hb_save');
@@ -5608,48 +5816,65 @@ function hpBlockEditor(row, ordered, lookups, v) {
     if (start && end && new Date(end) <= new Date(start)) return toast('نهاية الظهور يجب أن تكون بعد البداية', 'err');
     const bg = $('hb_bg').value.trim(), fg = $('hb_fg').value.trim(), ac = $('hb_ac').value.trim();
     if (!hpIsHex(bg) || !hpIsHex(fg) || !hpIsHex(ac)) return toast('الألوان يجب أن تكون بصيغة #RRGGBB', 'err');
-    const payload = {
-      block_type: $('hb_type').value,
-      layout_type: $('hb_layout').value,
-      title_ar: $('hb_title').value.trim() || null,
-      subtitle_ar: $('hb_sub').value.trim() || null,
-      starts_at: start, ends_at: end,
-      background_color: bg || null, text_color: fg || null, accent_color: ac || null,
-      is_active: $('hb_active').checked
-    };
+    const image = $('hb_type').value === 'campaign_hero' ? $('hb_image').value.trim() : '';
+    if (image && !hpIsHttps(image)) return toast('صورة البلوك يجب أن تكون HTTPS', 'err');
+    const allowedItems = HP_BLOCK_ITEM_TYPES[$('hb_type').value] || [];
+    if (selected.some(it => !allowedItems.includes(it.item_type))) return toast('يوجد عنصر من نوع لا يناسب نوع البلوك. أزل العنصر غير المناسب أو أعد نوع البلوك.', 'err');
+    const payload = { block_type:$('hb_type').value, layout_type:$('hb_layout').value,
+      title_ar:$('hb_title').value.trim()||null, subtitle_ar:$('hb_sub').value.trim()||null,
+      image_url:($('hb_type').value === 'campaign_hero' ? (image||null) : (r.image_url||null)), starts_at:start, ends_at:end, background_color:bg||null,
+      text_color:fg||null, accent_color:ac||null, is_active:$('hb_active').checked };
     const pos = $('hb_pos').value;
-    const ref = pos.startsWith('after:') ? others.find(x => x.id === pos.slice(6)) : null;
-    const refIdx = ref ? others.indexOf(ref) : -1;
-    const nextBlock = refIdx >= 0 ? others[refIdx + 1] : null;
-    if (pos === 'first') payload.sort_order = others.length ? others[0].sort_order - 5 : 10;
-    else if (pos === 'last') payload.sort_order = others.length ? others[others.length - 1].sort_order + 10 : 10;
-    else if (ref) payload.sort_order = nextBlock ? ref.sort_order + 1 : ref.sort_order + 10;
-    const settings = { ...((row && row.settings) || {}) };
-    const chosenBadge = (lookups.badge || []).find(x => x.id === $('hb_badge').value);
-    if (chosenBadge) {
-      settings.badge_id = chosenBadge.id;
-      settings.badge_text = ((chosenBadge.icon ? chosenBadge.icon + ' ' : '') + chosenBadge.label_ar).slice(0, 40);
-    } else if (settings.badge_id) {
-      delete settings.badge_id; delete settings.badge_text;
-    }
+    const ref = pos.startsWith('after:') ? others.find(x=>x.id===pos.slice(6)) : null;
+    const refIdx = ref ? others.indexOf(ref) : -1, nextBlock = refIdx>=0 ? others[refIdx+1] : null;
+    if (pos==='first') payload.sort_order = others.length ? others[0].sort_order-5 : 10;
+    else if (pos==='last') payload.sort_order = others.length ? others[others.length-1].sort_order+10 : 10;
+    else if (ref) payload.sort_order = nextBlock ? ref.sort_order+1 : ref.sort_order+10;
+    const settings = { ...((row && row.settings)||{}) };
+    const chosenBadge = (lookups.badge||[]).find(x=>x.id===$('hb_badge').value);
+    if (chosenBadge) { settings.badge_id=chosenBadge.id; settings.badge_text=((chosenBadge.icon?chosenBadge.icon+' ':'')+chosenBadge.label_ar).slice(0,40); }
+    else { delete settings.badge_id; delete settings.badge_text; }
     payload.settings = settings;
-    btn.disabled = true; btn.textContent = '⏳ حفظ...';
+    btn.disabled = true; btn.textContent = '⏳ جاري الحفظ...';
     try {
+      let blockId = row?.id;
       if (isNew) {
-        const maxOrder = ordered.reduce((m, x) => Math.max(m, x.sort_order || 0), 0);
-        const ins = await sb.from('homepage_blocks').insert({ ...payload }).select('id').single();
+        const ins = await sb.from('homepage_blocks').insert(payload).select('id').single();
         if (ins.error) throw ins.error;
         if (!ins.data?.id) throw new Error('لم يؤكد الخادم إنشاء البلوك');
-      } else {
-        await hpUpdate('homepage_blocks', row.id, payload);
+        blockId = ins.data.id;
+      } else await hpUpdate('homepage_blocks', blockId, payload);
+
+      const existing = selected.filter(x=>x._existing);
+      const keepIds = new Set(existing.map(x=>x.id));
+      let currentRows = [];
+      if (!isNew) {
+        const current = await sb.from('homepage_block_items').select('id').eq('block_id', blockId);
+        if (current.error) throw current.error;
+        currentRows = current.data || [];
       }
-      closeModal();
-      toast('تم الحفظ في قاعدة البيانات', 'ok');
-    } catch (e) { fail(e, hpErrMsg(e)); btn.disabled = false; btn.textContent = '💾 حفظ'; return; }
+      const removed = currentRows.filter(x=>!keepIds.has(x.id));
+      if (removed.length) {
+        const del = await sb.from('homepage_block_items').delete().in('id',removed.map(x=>x.id)).select('id');
+        if (del.error) throw del.error;
+        if ((del.data||[]).length !== removed.length) throw new Error('لم يتم حذف كل العناصر التي أزلتها؛ راجع صلاحيات قاعدة البيانات');
+      }
+      for (let i=0;i<selected.length;i++) {
+        const it=selected[i], imageOverride = $(`hb_item_img_${i}`)?.value?.trim() || null;
+        const titleOverride = $(`hb_item_title_${i}`)?.value?.trim() || null;
+        const patch={sort_order:(i+1)*10,is_active:true,image_override_url:imageOverride,title_override_ar:titleOverride};
+        if (it._existing) { await hpUpdate('homepage_block_items',it.id,patch); }
+        else {
+          const ins=await sb.from('homepage_block_items').insert({block_id:blockId,item_type:it.item_type,target_id:it.target_id,sort_order:(i+1)*10,is_active:true,image_override_url:imageOverride,title_override_ar:titleOverride}).select('id').single();
+          if (ins.error) throw ins.error;
+          if (!ins.data?.id) throw new Error('تعذر تأكيد إضافة أحد عناصر البلوك');
+        }
+      }
+      closeModal(); toast('تم حفظ البلوك وكل عناصره', 'ok');
+    } catch(e) { fail(e,hpErrMsg(e)); btn.disabled=false; btn.textContent='💾 حفظ البلوك ومحتواه'; return; }
     VIEWS.homepage(v);
   };
 }
-
 async function hpBlockItems(block, lookups, v) {
   const { data, error } = await sb.from('homepage_block_items').select('*').eq('block_id', block.id).order('sort_order');
   if (error) return fail(error, hpErrMsg(error));
@@ -5783,19 +6008,21 @@ async function hpRenderBanners(body, v) {
 
 function hpBannerEditor(row, ordered, lookups, v) {
   const isNew = !row;
-  const r = row || { target_type: 'url', target_id: null, target_url: '', display_seconds: 5, is_active: true, title_ar: '', subtitle_ar: '', image_url: '', mobile_image_url: '', button_text_ar: '', starts_at: null, ends_at: null };
+  const r = row || { target_type: 'promotion', target_id: null, target_url: '', display_seconds: 5, is_active: true, title_ar: '', subtitle_ar: '', image_url: '', mobile_image_url: '', button_text_ar: '', starts_at: null, ends_at: null };
   const targetOptions = t => (lookups[t] || []).map(x => `<option value="${x.id}" ${r.target_id === x.id ? 'selected' : ''}>${esc(x.name_ar)}</option>`).join('');
+  const bannerTargets = isNew ? { promotion: 'عرض' } : HP_BANNER_TARGETS;
   openModal(`<h2>${isNew ? 'بانر جديد' : 'تعديل البانر'} <button class="close" onclick="closeModal()" aria-label="إغلاق">✕</button></h2>
     <label>رفع صورة من الجهاز (JPG أو PNG أو WEBP، حتى 5 ميجابايت)</label><input id="hbn_file" type="file" accept="image/jpeg,image/png,image/webp"><small id="hbn_up" style="color:var(--ink2)"></small>
-    <label>رابط صورة سطح المكتب * (https)</label>
+    <label>صورة بانر الصفحة الرئيسية لسطح المكتب * (https)</label>
+    <small style="display:block;color:var(--ink2);margin:-4px 0 6px">هذه هي الصورة الكبيرة في واجهة التطبيق الرئيسية.</small>
     <input id="hbn_img" dir="ltr" value="${esc(r.image_url || '')}" placeholder="https://...">
     <div id="hbn_prev" style="margin-top:8px;height:110px;border-radius:12px;background:var(--bg2);overflow:hidden;display:grid;place-items:center"><small style="color:var(--ink2)">معاينة الصورة</small></div>
-    <label>رابط صورة الجوال (اختياري)</label><input id="hbn_mimg" dir="ltr" value="${esc(r.mobile_image_url || '')}">
+    <label>صورة بانر الجوال (اختياري)</label><small style="display:block;color:var(--ink2);margin:-4px 0 6px">تُستخدم بدل صورة سطح المكتب على شاشات الهاتف.</small><input id="hbn_mimg" dir="ltr" value="${esc(r.mobile_image_url || '')}">
     <label>العنوان</label><input id="hbn_title" maxlength="120" value="${esc(r.title_ar || '')}">
     <label>الوصف</label><input id="hbn_sub" maxlength="200" value="${esc(r.subtitle_ar || '')}">
-    <label>نص الزر</label><input id="hbn_btn" maxlength="40" value="${esc(r.button_text_ar || '')}">
+    <div class="set-card" style="margin:8px 0;padding:10px"><b>طريقة التفاعل:</b> لا يوجد زر داخل البانر؛ الضغط على الصورة أو محتوى البانر بالكامل يفتح العرض المختار.</div>
     <label>نوع الوجهة *</label>
-    <select id="hbn_ttype">${Object.entries(HP_BANNER_TARGETS).map(([k, l]) => `<option value="${k}" ${r.target_type === k ? 'selected' : ''}>${l}</option>`).join('')}</select>
+    <select id="hbn_ttype">${Object.entries(bannerTargets).map(([k, l]) => `<option value="${k}" ${r.target_type === k ? 'selected' : ''}>${l}</option>`).join('')}</select>
     <div id="hbn_url_wrap"><label>الرابط</label><input id="hbn_url" dir="ltr" value="${esc(r.target_url || '')}" placeholder="https://..."></div>
     <div id="hbn_id_wrap"><label>الهدف</label><select id="hbn_tid"></select></div>
     <label>مدة العرض بالثواني (1 - 60)</label><input id="hbn_sec" type="number" min="1" max="60" value="${r.display_seconds}">
@@ -5860,7 +6087,7 @@ function hpBannerEditor(row, ordered, lookups, v) {
     const payload = {
       image_url: img, mobile_image_url: mimg || null,
       title_ar: $('hbn_title').value.trim() || null, subtitle_ar: $('hbn_sub').value.trim() || null,
-      button_text_ar: $('hbn_btn').value.trim() || null,
+      button_text_ar: null,
       target_type: type, target_id: tid, target_url: type === 'url' ? url : null,
       display_seconds: sec, starts_at: start, ends_at: end,
       is_active: $('hbn_active').checked
@@ -5944,7 +6171,8 @@ function hpAnnouncementEditor(row, ordered, lookups, v) {
   openModal(`<h2>${isNew ? 'إعلان جديد' : 'تعديل الإعلان'} <button class="close" onclick="closeModal()" aria-label="إغلاق">✕</button></h2>
     <label>العنوان (اختياري)</label><input id="han_title" maxlength="80" value="${esc(r.title_ar || '')}">
     <label>نص الإعلان *</label><textarea id="han_msg" maxlength="300">${esc(r.message_ar || '')}</textarea>
-    <label>صورة الإعلان (اختياري)</label>
+    <label>صورة الإعلان (اختياري — لهذا الإعلان وموضعه فقط)</label>
+    <small style="display:block;color:var(--ink2);margin:-4px 0 6px">ليست صورة بانر الرئيسية ولا صورة العرض نفسه.</small>
     <input id="han_img" dir="ltr" placeholder="https://..." value="${esc(r.image_url || '')}">
     <input type="file" id="han_file" accept="image/png,image/jpeg,image/webp" style="margin-top:6px;max-width:100%">
     <div id="han_up" style="font-size:12px;color:var(--ink2);margin-top:4px">الإعلان اللي فيه صورة بيظهر في شريط الصفحة الرئيسية.</div>
