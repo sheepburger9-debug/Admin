@@ -2797,7 +2797,6 @@ async function openPromotionForm(x) {
     const linkMode=$('of_link_products').checked?'products':'general';
     const selectedItemIds=[...document.querySelectorAll('.of-item-check:checked')].map(ch=>ch.value);
     const selectedPageId=$('of_page').value;
-    if(!selectedPageId)return toast('اختار صفحة الحملة التي سيظهر العرض بداخلها','err');
     if(linkMode==='products'&&!selectedItemIds.length)return toast('اختار منتجًا واحدًا على الأقل، أو غيّر الاختيار إلى عرض مستقل','err');
     const name_ar=$('of_name').value.trim(),value=parseNumber($('of_value').value),min_order=parseNumber($('of_min').value)||0,imageUrl=$('of_image').value.trim();
     if(!name_ar||value<0)return toast('أدخل اسمًا وقيمة صحيحة','err');
@@ -2808,7 +2807,7 @@ async function openPromotionForm(x) {
     if(promotion_type==='free_addon'&&!$('of_reward_addon').value)return toast('حدد الإضافة المجانية من إعدادات العرض','err');
     const maxUsesInput=parseNumber($('of_max_uses').value);
     if(maxUsesInput>0&&x&&maxUsesInput<x.used_count)return toast('حد الاستخدام أقل من مرات الاستخدام الحالية','err');
-    const payload={name_ar,description_ar:$('of_desc').value.trim()||null,image_url:$('of_image').value.trim()||null,promotion_page_id:selectedPageId,promotion_scope:'items',target_category_id:null,promotion_type,value,min_order,priority:parseInt($('of_priority').value,10)||0,is_active:$('of_active').checked,max_discount:parseNumber($('of_max_discount').value)>0?parseNumber($('of_max_discount').value):null,target_item_id:null,reward_item_id:promotion_type==='free_item'?($('of_reward_item').value||null):null,reward_addon_id:promotion_type==='free_addon'?($('of_reward_addon').value||null):null,max_uses:parseNumber($('of_max_uses').value)>0?parseNumber($('of_max_uses').value):null,starts_at:$('of_start').value?new Date($('of_start').value+'T00:00:00').toISOString():null,ends_at:$('of_end').value?new Date($('of_end').value+'T23:59:59').toISOString():null,updated_at:new Date().toISOString()};
+    const payload={name_ar,description_ar:$('of_desc').value.trim()||null,image_url:$('of_image').value.trim()||null,promotion_page_id:selectedPageId||null,promotion_scope:'items',target_category_id:null,promotion_type,value,min_order,priority:parseInt($('of_priority').value,10)||0,is_active:$('of_active').checked,max_discount:parseNumber($('of_max_discount').value)>0?parseNumber($('of_max_discount').value):null,target_item_id:null,reward_item_id:promotion_type==='free_item'?($('of_reward_item').value||null):null,reward_addon_id:promotion_type==='free_addon'?($('of_reward_addon').value||null):null,max_uses:parseNumber($('of_max_uses').value)>0?parseNumber($('of_max_uses').value):null,starts_at:$('of_start').value?new Date($('of_start').value+'T00:00:00').toISOString():null,ends_at:$('of_end').value?new Date($('of_end').value+'T23:59:59').toISOString():null,updated_at:new Date().toISOString()};
     if(payload.starts_at&&payload.ends_at&&payload.ends_at<payload.starts_at)return toast('تاريخ الانتهاء قبل البداية','err');
     const q=x?await sb.from('menu_promotions').update(payload).eq('id',x.id):await sb.from('menu_promotions').insert(payload).select('id').single();
     if(q.error)return fail(q.error);
