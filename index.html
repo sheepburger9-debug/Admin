@@ -45,7 +45,7 @@
 <meta name="theme-color" content="#D9401F" id="theme-color-meta">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; connect-src 'self' https://*.supabase.co wss://*.supabase.co; img-src 'self' data: blob: https:; base-uri 'self'; form-action 'self'">
 <meta name="referrer" content="no-referrer">
-<title>لوحة التحكم — Sheep & Burger</title>
+<title>لوحة التحكم</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E🐑%3C/text%3E%3C/svg%3E">
 <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&display=swap" rel="stylesheet">
 <style>
@@ -467,7 +467,7 @@ window.addEventListener('unhandledrejection', function () {
 <!-- HTML 1 · شاشة تسجيل الدخول والتحقق الثنائي -->
 <div id="login" class="login" role="main">
   <form id="lform" class="lcard" novalidate>
-    <h1>🐑 Sheep & Burger</h1>
+    <h1><img id="adminLoginLogo" alt="" style="display:none;width:38px;height:38px;object-fit:contain;vertical-align:middle;margin-inline-end:8px"><span id="adminLoginBrandName">لوحة إدارة المطعم</span></h1>
     <div id="login-step-1">
       <label for="em">البريد الإلكتروني</label>
       <input id="em" type="email" autocomplete="username" dir="ltr" required minlength="5">
@@ -491,7 +491,7 @@ window.addEventListener('unhandledrejection', function () {
 <!-- HTML 2 · الهيكل العام: القائمة الجانبية، الشريط العلوي، ومحتوى الصفحات -->
 <div id="shell" class="hidden">
   <aside id="side" aria-label="القائمة الجانبية">
-    <div class="brand">🐑 Sheep & Burger</div>
+    <div class="brand" id="adminSidebarBrand"><img id="adminSidebarLogo" alt="" style="display:none;width:30px;height:30px;object-fit:contain;vertical-align:middle;margin-inline-end:8px"><span id="adminSidebarBrandName">لوحة المطعم</span></div>
     <nav id="nav"></nav>
     <div class="foot">
       <div id="who"></div>
@@ -1244,6 +1244,24 @@ async function loadSettings() {
   BRAND_ROW = brandRows.find(x => x.item_key === 'tagline') || null;
   BRAND_META_ROW = brandRows.find(x => x.item_key === 'meta_description') || null;
 }
+
+function applyAdminBrand(settings) {
+  const name = String(settings?.name_ar || '').trim();
+  const label = name || 'لوحة المطعم';
+  for (const id of ['adminLoginBrandName', 'adminSidebarBrandName']) {
+    const el = $(id);
+    if (el) el.textContent = label;
+  }
+  const logoUrl = typeof settings?.logo_url === 'string' ? settings.logo_url.trim() : '';
+  for (const id of ['adminLoginLogo', 'adminSidebarLogo']) {
+    const img = $(id);
+    if (!img) continue;
+    img.onerror = () => { img.style.display = 'none'; img.removeAttribute('src'); };
+    if (/^https:\/\//.test(logoUrl)) { img.src = logoUrl; img.style.display = ''; }
+    else { img.removeAttribute('src'); img.style.display = 'none'; }
+  }
+  document.title = name ? `لوحة التحكم — ${name}` : 'لوحة التحكم';
+}
 async function loadLoyalty() {
   const r = await safeQuery(() => sb.from('store_settings').select('loyalty_enabled,loyalty_points_per_currency,loyalty_redeem_points,loyalty_redeem_value,loyalty_stamps_for_reward,loyalty_stamp_reward_item_id').eq('id', CONFIG.SETTINGS_ROW_ID).maybeSingle(), null);
   const x = r.data || {};
@@ -1759,10 +1777,11 @@ async function openOrderDetail(o) {
         ${items.map(i => `<tr>
           <td data-label="الصنف">${esc(i.item_name || i.name || '—')}
             ${i.addons ? `<div style="font-size:11px;color:var(--ink2);margin-top:2px">➕ ${esc(Array.isArray(i.addons) ? i.addons.map(a => a.name || a).join('، ') : i.addons)}</div>` : ''}
+            ${i.special_offer_snapshot?.type === 'bundle' ? `<div style="font-size:11px;color:var(--ink2);margin-top:3px"><b>مكونات الباقة:</b> ${(i.special_offer_snapshot.components||[]).map(c=>`${Number(c.quantity)||1} × ${esc(c.name_ar||'منتج')}`).join('، ')}</div>` : ''}
             ${i.notes ? `<div style="font-size:11px;color:#EF6C00;margin-top:2px">📝 ${esc(i.notes)}</div>` : ''}
           </td>
           <td data-label="الكمية">${i.quantity || 1}</td>
-          <td data-label="السعر">${money(i.unit_price ?? i.price ?? 0)}</td>
+          <td data-label="السعر">${i.original_unit_price != null && Number(i.original_unit_price) > Number(i.unit_price||0) ? `<s style="font-size:11px;color:var(--ink2)">${money(i.original_unit_price)}</s><br>` : ''}${money(i.unit_price ?? i.price ?? 0)}</td>
         </tr>`).join('')}
       </tbody></table>
     </section>
@@ -1816,7 +1835,7 @@ function printInvoice(o) {
     th{background:#f5f5f5}.tot{font-size:18px;font-weight:900;display:flex;justify-content:space-between;margin-top:12px;padding-top:12px;border-top:2px solid #000}
     .info{margin-bottom:8px;font-size:13px;line-height:1.8;word-break:break-word}
     @media print{button{display:none}}</style></head><body>
-    <h1>🐑 Sheep & Burger</h1><small>${e(dt(o.created_at))}</small>
+    <h1>${e(SETTINGS?.name_ar || 'المطعم')}</h1><small>${e(dt(o.created_at))}</small>
     <div class="info"><b>#${e(o.order_number ?? o.id)}</b><br>${e(o.customer_name || '')}<br><span dir="ltr">${e(o.customer_phone || '')}</span><br>${e(o.delivery_address || '')}<br><b>الدفع: ${e(pay.l)}</b></div>
     ${o.notes ? `<div style="background:#fff3e0;padding:6px;border-right:3px solid #ef6c00;margin:8px 0;font-size:12px"><b>ملاحظات:</b> ${e(o.notes)}</div>` : ''}
     <table><thead><tr><th>الصنف</th><th>الكمية</th><th>السعر</th></tr></thead>
@@ -1825,7 +1844,7 @@ function printInvoice(o) {
     <p style="text-align:center;margin-top:20px;font-size:12px">شكرًا لطلبك 🍔</p>
     <button onclick="window.print()" style="display:block;margin:20px auto;padding:10px 20px;cursor:pointer;background:#D9401F;color:#fff;border:0;border-radius:8px;font-family:inherit;font-weight:700">طباعة</button>
     <script>window.onload=()=>setTimeout(()=>window.print(),300)<\/script>
-    <noscript><div style="padding:24px;text-align:center;font-family:sans-serif">يجب تفعيل JavaScript لاستخدام لوحة تحكم Sheep &amp; Burger.</div></noscript>
+    <noscript><div style="padding:24px;text-align:center;font-family:sans-serif">يجب تفعيل JavaScript لاستخدام لوحة الإدارة.</div></noscript>
 </body></html>`;
   w.document.write(html);
   w.document.close();
@@ -2070,7 +2089,7 @@ async function bulkAction(action) {
 
 /* ─── MENU ─── */
 VIEWS.menu = async v => {
-  const r = await safeQuery(() => sb.from('menu_items').select('*,item_sizes(price,label_ar,is_available)').order('sort_order').order('name_ar'), null);
+  const r = await safeQuery(() => sb.from('menu_items').select('*,item_sizes(price,label_ar,is_available)').eq('is_bundle',false).order('sort_order').order('name_ar'), null);
   if (!r.data) { v.innerHTML = notInstalledMsg('menu_items'); return; }
   const data = r.data;
   const edit = can(OM);
@@ -2226,9 +2245,9 @@ function openMenuForm(m) {
       <section style="margin-top:14px">
         <h3 style="font-size:14px;margin-bottom:6px">2. الاسم والوصف</h3>
         <label>اسم المنتج * <small>هيظهر للعميل بالاسم ده</small></label>
-        <input id="m_ar" maxlength="200" value="${esc(m?.name_ar || '')}" placeholder="مثال: برجر كلاسيك">
+        <input id="m_ar" maxlength="80" value="${esc(m?.name_ar || '')}" placeholder="اكتب اسم المنتج">
         <label>وصف قصير (اختياري) <small>جملة واحدة تشرح المنتج</small></label>
-        <textarea id="m_desc" rows="2" placeholder="مثال: لحم بقري طازج مع جبنة شيدر وصوص مخصوص">${esc(m?.description_ar || '')}</textarea>
+        <textarea id="m_desc" rows="2" maxlength="400" placeholder="اكتب وصف المنتج ومكوناته">${esc(m?.description_ar || '')}</textarea>
       </section>
 
       <section style="margin-top:14px">
@@ -2252,9 +2271,13 @@ function openMenuForm(m) {
       </section>
 
       <section style="margin-top:14px">
-        <h3 style="font-size:14px;margin-bottom:6px">5. المكونات (اختياري)</h3>
-        <textarea id="m_ingr" rows="2" placeholder="مثال: لحم بقري، جبنة شيدر، خس، طماطم">${esc(Array.isArray(m?.ingredients_ar) ? m.ingredients_ar.join(', ') : (m?.ingredients_ar || ''))}</textarea>
+        <h3 style="font-size:14px;margin-bottom:6px">5. المكونات ومسببات الحساسية (اختياري)</h3>
+        <label for="m_ingr">المكونات</label>
+        <textarea id="m_ingr" rows="2" placeholder="اكتب المكونات وافصل بينها بفاصلة">${esc(Array.isArray(m?.ingredients_ar) ? m.ingredients_ar.join(', ') : (m?.ingredients_ar || ''))}</textarea>
         <small style="color:var(--ink2);font-size:12px">افصل بين كل مكون والتاني بفاصلة.</small>
+        <label for="m_allergens" style="margin-top:10px">مسببات الحساسية</label>
+        <textarea id="m_allergens" rows="2" placeholder="مثال: لبن، قمح، بيض">${esc(Array.isArray(m?.allergens) ? m.allergens.join(', ') : '')}</textarea>
+        <small style="color:var(--ink2);font-size:12px">اكتب مسببات الحساسية وافصل بينها بفاصلة.</small>
       </section>
 
       <section style="margin-top:14px">
@@ -2391,7 +2414,14 @@ function openMenuForm(m) {
       const sizesRaw = $('mod')._sizes || [];
       const validSizes = sizesRaw.filter(x => (x.name_ar || '').trim() && Number(x.price) > 0)
         .map(x => ({ name_ar: x.name_ar.trim(), price: Number(x.price) }));
+      const ingredients = $('m_ingr').value.split(/[,،\n]/).map(x => x.trim()).filter(Boolean);
+      const allergens = $('m_allergens').value.split(/[,،\n]/).map(x => x.trim()).filter(Boolean);
       if (!validSizes.length) errs.push('حجم واحد على الأقل باسم وسعر أكبر من صفر');
+      if (validSizes.length > 20) errs.push('الحد الأقصى 20 حجمًا للمنتج الواحد');
+      if (ingredients.length > 40) errs.push('الحد الأقصى 40 مكونًا للمنتج الواحد');
+      if (allergens.length > 30) errs.push('الحد الأقصى 30 مسبب حساسية للمنتج الواحد');
+      if (ar.length > 80) errs.push('اسم المنتج لا يزيد عن 80 حرفًا');
+      if ($('m_desc').value.trim().length > 400) errs.push('وصف المنتج لا يزيد عن 400 حرف');
 
       const saleByLabel = new Map();
       for (const x of sizesRaw) {
@@ -2423,7 +2453,8 @@ function openMenuForm(m) {
         subcategory_ar: subId ? ((subcategories.data || []).find(sc => sc.id === subId)?.name_ar || null) : null,
         image_url: $('mod')._img || null,
         is_available: $('m_avail').checked,
-        ingredients_ar: $('m_ingr').value.split(',').map(x => x.trim()).filter(Boolean),
+        ingredients_ar: ingredients,
+        allergens,
         is_spicy: $('m_spicy').checked,
         is_vegetarian: $('m_veg').checked,
         is_popular: $('m_popular').checked,
@@ -2704,6 +2735,39 @@ function openCouponForm(c) {
   };
 }
 
+/* ─── FIXED PRODUCT BUNDLES ─── */
+async function renderProductBundlesPanel(root) {
+  root.innerHTML = '<div class="empty">جارٍ تحميل الباقات...</div>';
+  const [bundlesR, linksR, itemsR] = await Promise.all([
+    sb.from('product_bundles').select('id,name_ar,description_ar,image_url,original_price,discount_type,discount_value,final_price,is_active,starts_at,ends_at,sort_order').order('sort_order').order('created_at',{ascending:false}),
+    sb.from('product_bundle_items').select('bundle_id,item_id,quantity,sort_order').order('sort_order'),
+    sb.from('menu_items').select('id,name_ar').eq('is_bundle',false).eq('is_secret',false)
+  ]);
+  for (const r of [bundlesR,linksR,itemsR]) if (r.error) { root.innerHTML=''; return fail(r.error,'تعذر تحميل الباقات'); }
+  const bundles=bundlesR.data||[], links=linksR.data||[], itemMap=new Map((itemsR.data||[]).map(x=>[String(x.id),x.name_ar]));
+  const componentsFor=id=>links.filter(x=>String(x.bundle_id)===String(id)).sort((a,b)=>a.sort_order-b.sort_order).map(x=>`${Number(x.quantity)||1} × ${esc(itemMap.get(String(x.item_id))||'منتج غير متاح')}`).join('، ');
+  root.innerHTML = `<div class="set-card" style="margin-bottom:14px"><h3>🎁 الباقات المستقلة</h3><p style="font-size:13px;line-height:1.9;color:var(--ink2)">كل باقة تُباع كسطر واحد في السلة، ومكوناتها ثابتة. السعر والخصم يُحسبان من قاعدة البيانات، ولا تدخل الباقات في خصومات المنيو التلقائية.</p><div class="head"><span>${bundles.length} باقة محفوظة</span><button class="btn pri" id="add-product-bundle">+ إنشاء باقة</button></div></div>${bundles.length?`<div class="set-grid">${bundles.map(b=>{const discount=Number(b.original_price)>Number(b.final_price);const status=!b.is_active?'متوقفة':(b.starts_at&&new Date(b.starts_at)>new Date()?'قادمة':(b.ends_at&&new Date(b.ends_at)<new Date()?'منتهية':'نشطة'));return `<article class="set-card" data-bundle-id="${b.id}" style="display:flex;flex-direction:column;gap:10px">${b.image_url?`<img src="${esc(b.image_url)}" alt="" loading="lazy" style="width:100%;height:150px;object-fit:cover;border-radius:12px">`:''}<div style="display:flex;justify-content:space-between;gap:8px;align-items:start"><h3>${esc(b.name_ar)}</h3><span class="badge">${status}</span></div><p style="font-size:13px;color:var(--ink2)">${esc(b.description_ar||'لا يوجد وصف')}</p><div style="font-size:13px;line-height:1.8"><b>المكونات:</b> ${componentsFor(b.id)||'لا توجد مكونات'}</div><div style="display:flex;gap:9px;align-items:baseline">${discount?`<s style="color:var(--ink2)">${money(b.original_price)}</s>`:''}<b style="font-size:19px">${money(b.final_price)}</b>${discount?`<span class="badge">${b.discount_type==='percent'?`خصم ${Number(b.discount_value)}%`:`خصم ${money(Number(b.original_price)-Number(b.final_price))}`}</span>`:''}</div><small>البداية: ${b.starts_at?dtShort(b.starts_at):'فور التفعيل'} · النهاية: ${b.ends_at?dtShort(b.ends_at):'بدون انتهاء'}</small><button class="btn out sm" data-bundle-edit>✏️ تعديل الباقة</button></article>`}).join('')}</div>`:'<div class="empty">لا توجد باقات بعد. أنشئ أول باقة من الزر بالأعلى.</div>'}`;
+  root.querySelector('#add-product-bundle').onclick=()=>openProductBundleForm(null,root);
+  root.querySelectorAll('[data-bundle-edit]').forEach(btn=>btn.onclick=()=>openProductBundleForm(bundles.find(x=>String(x.id)===String(btn.closest('[data-bundle-id]').dataset.bundleId)),root));
+}
+
+async function openProductBundleForm(bundle, root) {
+  const [itemsR, linksR] = await Promise.all([
+    sb.from('menu_items').select('id,name_ar,is_available').eq('is_available',true).eq('is_secret',false).eq('is_bundle',false).order('name_ar'),
+    bundle ? sb.from('product_bundle_items').select('item_id,quantity').eq('bundle_id',bundle.id) : Promise.resolve({data:[],error:null})
+  ]);
+  if(itemsR.error) return fail(itemsR.error,'تعذر تحميل منتجات مكونات الباقة');
+  if(linksR.error) return fail(linksR.error,'تعذر تحميل مكونات الباقة الحالية');
+  const items=itemsR.data||[], selected=new Map((linksR.data||[]).map(x=>[String(x.item_id),Number(x.quantity)||1]));
+  const localDate=value=>{if(!value)return '';const d=new Date(value);const pad=n=>String(n).padStart(2,'0');return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;};
+  const pct=bundle?.discount_type==='percent', fixed=bundle?.discount_type==='fixed';
+  openModal(`<h2>${bundle?'تعديل باقة':'إنشاء باقة مستقلة'} <button class="close" onclick="closeModal()">✕</button></h2><div class="set-card" style="padding:12px;line-height:1.8;margin-bottom:12px"><b>الباقة منتج واحد.</b><small style="display:block;color:var(--ink2)">العميل لا يغير المكونات. كل المكونات التي تختارها هنا تُحفظ داخل الطلب كنسخة ثابتة وقت الشراء.</small></div><h3>1) بيانات الباقة</h3><label>اسم الباقة *</label><input id="bd_name" maxlength="80" value="${esc(bundle?.name_ar||'')}"><label>الوصف</label><textarea id="bd_desc" maxlength="400" rows="3">${esc(bundle?.description_ar||'')}</textarea>${imgField('bd_image','صورة الباقة','bundles',bundle?.image_url)}<h3 style="margin-top:16px">2) مكونات الباقة الثابتة *</h3><input id="bd_search" type="search" placeholder="ابحث عن منتج..." style="width:100%;margin:8px 0"><div id="bd_components" style="max-height:260px;overflow:auto;border:1px solid var(--line);border-radius:10px;padding:6px">${items.map(it=>`<div data-bd-row="${esc(it.name_ar)}" style="display:flex;align-items:center;gap:8px;padding:8px 4px;border-bottom:1px solid var(--line)"><input type="checkbox" class="bd-component" value="${it.id}" ${selected.has(String(it.id))?'checked':''}><span style="flex:1">${esc(it.name_ar)}</span><label style="display:flex;align-items:center;gap:4px;font-size:12px">الكمية <input class="bd-qty" data-item="${it.id}" type="number" min="1" max="20" value="${selected.get(String(it.id))||1}" style="width:58px;padding:6px"></label></div>`).join('')||'<div class="empty">لا توجد منتجات متاحة</div>'}</div><h3 style="margin-top:16px">3) السعر والخصم</h3><label>السعر الأساسي قبل الخصم (جنيه) *</label><input id="bd_original" type="number" min="0.01" step="0.01" value="${bundle?.original_price??''}"><label>نوع الخصم</label><select id="bd_discount"><option value="none" ${!pct&&!fixed?'selected':''}>بدون خصم</option><option value="percent" ${pct?'selected':''}>نسبة مئوية</option><option value="fixed" ${fixed?'selected':''}>مبلغ ثابت</option></select><label>قيمة الخصم</label><input id="bd_value" type="number" min="0" step="0.01" value="${bundle?.discount_value??0}"><div id="bd_preview" class="set-card" style="padding:12px;margin:10px 0"></div><h3 style="margin-top:16px">4) الظهور والمدة</h3><label><input id="bd_active" type="checkbox" ${bundle?.is_active===false?'':'checked'}> الباقة نشطة</label><label>تاريخ ووقت البداية (اختياري)</label><input id="bd_start" type="datetime-local" value="${localDate(bundle?.starts_at)}"><label>تاريخ ووقت الانتهاء (اختياري)</label><input id="bd_end" type="datetime-local" value="${localDate(bundle?.ends_at)}"><label>ترتيب الظهور</label><input id="bd_sort" type="number" value="${bundle?.sort_order??0}"><div class="row" style="margin-top:16px"><button class="btn pri big" id="bd_save">حفظ الباقة</button><button class="btn out big" type="button" onclick="closeModal()">إلغاء</button></div>`);
+  const updatePreview=()=>{const base=Number($('bd_original').value)||0,type=$('bd_discount').value,value=Number($('bd_value').value)||0;let final=base;if(type==='percent')final=base*(1-Math.min(100,Math.max(0,value))/100);if(type==='fixed')final=base-Math.min(base,Math.max(0,value));final=Math.max(0,Math.round(final*100)/100);$('bd_preview').innerHTML=`<b>معاينة السعر:</b> <span style="text-decoration:${final<base?'line-through':'none'};color:var(--ink2)">${money(base)}</span> <strong style="font-size:20px">${money(final)}</strong> ${final<base?`<span class="badge">${type==='percent'?`خصم ${value}%`:`خصم ${money(base-final)}`}</span>`:''}`;};
+  ['bd_original','bd_discount','bd_value'].forEach(id=>$(id).addEventListener('input',updatePreview));updatePreview();
+  $('bd_search').oninput=()=>{const q=$('bd_search').value.trim().toLowerCase();document.querySelectorAll('#bd_components [data-bd-row]').forEach(el=>el.style.display=!q||el.dataset.bdRow.toLowerCase().includes(q)?'flex':'none');};
+  $('bd_save').onclick=async()=>{const name=$('bd_name').value.trim(),base=Number($('bd_original').value),type=$('bd_discount').value,value=Number($('bd_value').value)||0;const selectedItems=[...document.querySelectorAll('.bd-component:checked')].map(el=>({item_id:el.value,quantity:Math.min(20,Math.max(1,Number(document.querySelector(`.bd-qty[data-item="${el.value}"]`)?.value)||1))}));if(name.length<2)return toast('اكتب اسم الباقة','err');if(!Number.isFinite(base)||base<=0)return toast('اكتب سعرًا أساسيًا صحيحًا','err');if(!selectedItems.length)return toast('اختار مكونًا واحدًا على الأقل','err');if(type==='percent'&&(value<=0||value>100))return toast('النسبة يجب أن تكون أكبر من صفر وحتى 100%','err');if(type==='fixed'&&(value<=0||value>base))return toast('قيمة الخصم يجب أن تكون أكبر من صفر ولا تتجاوز السعر الأساسي','err');const start=$('bd_start').value?new Date($('bd_start').value).toISOString():null,end=$('bd_end').value?new Date($('bd_end').value).toISOString():null;if(start&&end&&new Date(end)<=new Date(start))return toast('تاريخ الانتهاء يجب أن يكون بعد البداية','err');const payload={...(bundle?{id:bundle.id}:{}),name_ar:name,description_ar:$('bd_desc').value.trim()||null,image_url:$('bd_image').value.trim()||null,original_price:base,discount_type:type,discount_value:type==='none'?0:value,is_active:$('bd_active').checked,starts_at:start,ends_at:end,sort_order:Number($('bd_sort').value)||0};const btn=$('bd_save');btn.disabled=true;btn.textContent='جارٍ الحفظ...';try{const {data,error}=await sb.rpc('admin_save_product_bundle',{p_bundle:payload,p_items:selectedItems});if(error)throw error;if(!data?.id)throw new Error('لم ترجع قاعدة البيانات معرف الباقة');closeModal();toast('تم حفظ الباقة ومكوناتها وسعرها','ok');await renderProductBundlesPanel(root);}catch(e){fail(e,'تعذر حفظ الباقة');btn.disabled=false;btn.textContent='حفظ الباقة';}};
+}
+
 /* ─── MENU PROMOTIONS (separate from coupon codes) ─── */
 VIEWS.offers = async v => {
   const [r, pgR, plR, blkR] = await Promise.all([
@@ -2718,6 +2782,13 @@ VIEWS.offers = async v => {
   const placementName = p => p.placement_type==='homepage_block' ? `بلوك: ${blockMap.get(p.block_id)||'بلوك غير معروف'}` : (PROMO_PLACEMENTS[p.placement_type]||p.placement_type);
   v.innerHTML = `<div class="set-card" style="margin-bottom:14px"><h3>🎁 إدارة العروض التي تظهر للعميل</h3><p style="font-size:13px;line-height:1.9;color:var(--ink2)">هنا تنشئ «العرض الحقيقي» الذي يطبق الخصم على الطلب. بعد ذلك تربطه بصفحة حملة، ثم تحدد البلوك الذي يعرض بطاقة هذه الصفحة للعميل. العرض شيء، وصفحة الحملة شيء آخر، والبلوك مجرد مكان عرض. كل بطاقة بالأسفل توضح لك اسم الصفحة والبلوك التابع لهما العرض.</p><div class="head"><span>${data.length} عرض محفوظ</span><button class="btn pri" id="addoffer">+ إنشاء عرض</button></div></div>
     ${data.length ? `<div class="set-grid">${data.map(x=>`<article class="set-card" data-id="${x.id}" style="display:flex;flex-direction:column;gap:10px">${x.image_url?`<img src="${esc(x.image_url)}" alt="" loading="lazy" style="width:100%;height:140px;object-fit:cover;border-radius:12px">`:''}<div style="display:flex;align-items:start;justify-content:space-between;gap:8px"><h3>${esc(x.name_ar)}</h3><span class="badge">${!x.is_active?'متوقف':(x.starts_at&&new Date(x.starts_at)>new Date()?'قادم':(x.ends_at&&new Date(x.ends_at)<new Date()?'منتهي':(x.max_uses!=null&&Number(x.used_count||0)>=Number(x.max_uses)?'اكتمل الاستخدام':'نشط')))}</span></div><p style="color:var(--ink2);font-size:13px">${esc(x.description_ar||'لا يوجد وصف مضاف')}</p><div><b>${esc(({percent:'خصم نسبة',fixed:'خصم مبلغ',free_delivery:'توصيل مجاني',free_item:'صنف مجاني',free_addon:'إضافة مجانية'})[x.promotion_type]||x.promotion_type)}</b> · ${['percent','fixed'].includes(x.promotion_type)?(x.promotion_type==='percent'?`${x.value}%` : money(x.value)):'بدون قيمة نقدية'}</div><div style="border:1px solid var(--line);border-radius:10px;padding:10px;background:var(--bg2,rgba(127,127,127,.06));font-size:13px;line-height:1.9"><b>📄 تابع لصفحة:</b> ${esc(x.promotion_page_id ? (pageMap.get(x.promotion_page_id)||'صفحة غير موجودة') : 'غير مربوط بصفحة')}<br><b>📍 يظهر في:</b> ${x.promotion_page_id ? 'داخل صفحة الحملة فقط' : ((placementsByOffer.get(x.id)||[]).length ? (placementsByOffer.get(x.id)||[]).map(p=>esc(placementName(p))+(p.is_active?'':' (موقوف)')).join('، ') : 'لم يتم تحديد بلوك أو مكان ظهور')}</div><small>الاستخدام: ${x.used_count||0}${x.max_uses?' / '+x.max_uses:' / بلا حد'} · الأولوية: ${x.priority||0}</small><small>البداية: ${x.starts_at?dtShort(x.starts_at):'فور التفعيل'} · النهاية: ${x.ends_at?dtShort(x.ends_at):'بدون انتهاء'}</small><div class="row"><button class="btn pri sm" data-offer-edit>✏️ تعديل</button><button class="btn out sm" data-offer-toggle>${x.is_active?'إيقاف العرض':'تفعيل العرض'}</button></div></article>`).join('')}</div>` : '<div class="empty">لا توجد عروض بعد. اضغط «إنشاء عرض» لإضافة أول عرض ديناميكي.</div>'}`;
+  const discountPanel=document.createElement('div'); discountPanel.id='discount-offers-panel';
+  while(v.firstChild) discountPanel.appendChild(v.firstChild);
+  const tabs=document.createElement('div'); tabs.className='tabs'; tabs.setAttribute('role','tablist'); tabs.innerHTML='<button type="button" class="on" data-offers-tab="discounts">خصومات المنيو</button><button type="button" data-offers-tab="bundles">الباقات المستقلة</button>';
+  const bundlePanel=document.createElement('div'); bundlePanel.id='product-bundles-panel'; bundlePanel.hidden=true;
+  v.append(tabs,discountPanel,bundlePanel);
+  tabs.querySelector('[data-offers-tab="discounts"]').onclick=()=>{discountPanel.hidden=false;bundlePanel.hidden=true;tabs.querySelectorAll('button').forEach(b=>b.classList.toggle('on',b.dataset.offersTab==='discounts'));};
+  tabs.querySelector('[data-offers-tab="bundles"]').onclick=async()=>{discountPanel.hidden=true;bundlePanel.hidden=false;tabs.querySelectorAll('button').forEach(b=>b.classList.toggle('on',b.dataset.offersTab==='bundles'));await renderProductBundlesPanel(bundlePanel);};
   $('addoffer').onclick = () => openPromotionForm(null);
   v.querySelectorAll('[data-offer-edit]').forEach(b=>b.onclick=()=>openPromotionForm(data.find(z=>z.id===b.closest('[data-id]').dataset.id)));
   v.querySelectorAll('[data-offer-toggle]').forEach(b=>b.onclick=async()=>{const x=data.find(z=>z.id===b.closest('[data-id]').dataset.id); const {error}=await sb.from('menu_promotions').update({is_active:!x.is_active,updated_at:new Date().toISOString()}).eq('id',x.id); if(error)return fail(error); toast('تم تحديث العرض','ok');go('offers');});
@@ -2740,7 +2811,7 @@ async function clearPromotionOutsidePage(offerId) {
 
 async function openPromotionForm(x) {
   const [itemsResult, addonsResult, pagesResult, linkedResult] = await Promise.all([
-    sb.from('menu_items').select('id,name_ar,is_available,is_secret').eq('is_available', true).eq('is_secret', false).order('name_ar'),
+    sb.from('menu_items').select('id,name_ar,is_available,is_secret').eq('is_available', true).eq('is_secret', false).eq('is_bundle',false).order('name_ar'),
     sb.from('addons').select('id,name_ar,is_available').eq('is_available', true).order('name_ar'),
     sb.from('promotion_pages').select('id,title_ar').order('sort_order'),
     x ? sb.from('menu_promotion_items').select('item_id').eq('promotion_id', x.id) : Promise.resolve({data:[],error:null})
@@ -2846,7 +2917,7 @@ async function laOpen(offerId) {
     sb.from('menu_promotions').select('id,name_ar,promotion_scope,target_category_id,promotion_page_id').eq('id', offerId).maybeSingle(),
     sb.from('menu_promotion_items').select('item_id').eq('promotion_id', offerId),
     sb.from('categories').select('id,name_ar').order('name_ar'),
-    sb.from('menu_items').select('id,name_ar').order('name_ar'),
+    sb.from('menu_items').select('id,name_ar').eq('is_bundle',false).order('name_ar'),
     sb.from('promotion_display_placements').select('*').eq('promotion_id', offerId).order('sort_order'),
     sb.from('promotion_pages').select('id,title_ar').order('sort_order'),
     sb.from('homepage_blocks').select('id,title_ar').order('sort_order'),
@@ -4339,7 +4410,7 @@ const DC_ENTITIES = {
   loyalty: { label: 'مستويات الولاء', table: 'loyalty_levels', cols: 'id,name_ar,min_points', name: r => r.name_ar, checks: async () => [] },
   appContent: { label: 'محتوى التطبيق', table: 'app_content', cols: 'id,label_ar,group_key,item_key', name: r => `${r.group_key}.${r.item_key}`, checks: async () => [] },
   banners: { label: 'بنرات الصفحة الرئيسية', table: 'homepage_banners', cols: 'id,title_ar', name: r => r.title_ar || '(بدون عنوان)', checks: async () => [] },
-  announcements: { label: 'الإعلانات النصية', table: 'homepage_announcements', cols: 'id,message_ar', name: r => r.message_ar, checks: async () => [] },
+  announcements: { label: 'اللافتات الإعلانية', table: 'homepage_announcements', cols: 'id,message_ar', name: r => r.message_ar, checks: async () => [] },
   blocks: { label: 'بلوكات الصفحة الرئيسية', table: 'homepage_blocks', cols: 'id,title_ar,block_type', name: r => r.title_ar || r.block_type,
     checks: id => Promise.all([
       dcSafe('عناصر في البلوك', 'homepage_block_items', { block_id: id }, false, 'تُحذف مع البلوك'),
@@ -5273,7 +5344,7 @@ VIEWS.health = async v => {
     const rtEl=$('rt'),rtOk=!!rtEl&&rtEl.classList.contains('live');
     add('التحديثات المباشرة','تحديثات الطلبات لحظيًا',rtOk?'ok':'warn',rtOk?'قناة التحديثات المباشرة متصلة حسب مؤشر التطبيق.':'التطبيق لا يعرض القناة المباشرة كمتصلة؛ قد تتأخر تحديثات الطلبات.',null,{impact:'قد لا تظهر الطلبات وتغييراتها فورًا على لوحة الإدارة.',cause:'قد تكون القناة ما زالت تتصل أو أن الاتصال انقطع.',next:'انتظر قليلًا ثم أعد الفحص. إذا استمر التحذير، راجع إعدادات Realtime وسجلات الشبكة.'});
 
-    const tables=[['categories','أقسام المنيو'],['menu_items','أصناف المنيو'],['item_sizes','أحجام الأصناف'],['addons','الإضافات'],['item_addons','ربط الأصناف بالإضافات'],['orders','الطلبات'],['order_items','تفاصيل الطلبات'],['order_status_history','سجل حالات الطلبات'],['drivers','السائقون'],['delivery_zones','مناطق التوصيل'],['coupons','الكوبونات'],['coupon_redemptions','استخدام الكوبونات'],['reviews','التقييمات'],['user_roles','أدوار المستخدمين'],['store_settings','إعدادات المطعم'],['menu_promotions','عروض المنيو'],['refunds','طلبات الاسترداد'],['admin_audit_log','سجل نشاط الإدارة'],['secret_menu_codes','أكواد المنيو السري'],['secret_menu_code_items','أصناف المنيو السري'],['customer_notifications','إشعارات العملاء']];
+    const tables=[['categories','أقسام المنيو'],['menu_items','أصناف المنيو'],['item_sizes','أحجام الأصناف'],['addons','الإضافات'],['item_addons','ربط الأصناف بالإضافات'],['orders','الطلبات'],['order_items','تفاصيل الطلبات'],['order_status_history','سجل حالات الطلبات'],['drivers','السائقون'],['delivery_zones','مناطق التوصيل'],['coupons','الكوبونات'],['coupon_redemptions','استخدام الكوبونات'],['reviews','التقييمات'],['user_roles','أدوار المستخدمين'],['store_settings','إعدادات المطعم'],['menu_promotions','عروض المنيو'],['product_bundles','الباقات المستقلة'],['product_bundle_items','مكونات الباقات'],['refunds','طلبات الاسترداد'],['admin_audit_log','سجل نشاط الإدارة'],['secret_menu_codes','أكواد المنيو السري'],['secret_menu_code_items','أصناف المنيو السري'],['customer_notifications','إشعارات العملاء']];
     add('إتاحة الجداول','سجل نقاط الولاء','warn','مقيّد بسياسة الأمان: لا تقرأه لوحة الإدارة مباشرة، وبياناته تُعرض عبر دالة آمنة للمالك والمدير.',0,{next:'لا يلزم إجراء. الشاشة تعرض البيانات عبر admin_get_customer_loyalty.'});
     add('إتاحة الجداول','سجل أختام الولاء','warn','مقيّد بسياسة الأمان: لا تقرأه لوحة الإدارة مباشرة، وبياناته تُعرض عبر دالة آمنة للمالك والمدير.',0,{next:'لا يلزم إجراء. الشاشة تعرض البيانات عبر admin_get_customer_loyalty.'});
     await Promise.all(tables.map(async ([table,label])=>{const t0=performance.now();try{const r=await sb.from(table).select('*').limit(1);if(r.error){const e=explainError(r.error);add('إتاحة الجداول',label,'error',e.summary,Math.round(performance.now()-t0),{impact:'قد تتعطل الشاشة أو الوظيفة التي تعتمد على هذا الجدول.',cause:'فشل استعلام تجريبي محدود للقراءة.',next:e.next,original:e.original,technical:r.error.code||''});}else add('إتاحة الجداول',label,'ok','الجدول قابل للاستعلام بحساب الإدارة الحالي.',Math.round(performance.now()-t0),{next:'لا يلزم إجراء حاليًا.'});}catch(e){const x=explainError(e);add('إتاحة الجداول',label,'error',x.summary,Math.round(performance.now()-t0),{impact:'قد تتعطل الوظيفة المرتبطة بالجدول.',cause:'تعذر تنفيذ الاستعلام التجريبي.',next:x.next,original:x.original});}}));
@@ -5346,17 +5417,18 @@ VIEWS.health = async v => {
 /* ═══════════════════════════════════════════════════
    SECTION 12b · إدارة الصفحة الرئيسية
    البلوكات (homepage_blocks + homepage_block_items)، البنرات (homepage_banners)،
-   الإعلانات النصية (homepage_announcements).
+   اللافتات الإعلانية (homepage_announcements).
    - كل القراءات من Supabase، ولا توجد بيانات ثابتة أو احتياطية.
    - كل عملية كتابة تتحقق من الاستجابة (select) ثم يُعاد تحميل القائمة من قاعدة البيانات.
    - سياسات RLS الحالية تسمح بالكتابة للمالك والمدير فقط (OM)، ولم نغيّرها.
    ═══════════════════════════════════════════════════ */
-const HP_TABS = [['blocks','🧱 البلوكات'], ['banners','🖼️ البنرات'], ['announcements','📢 الإعلانات النصية']];
+const HP_TABS = [['blocks','🧱 البلوكات'], ['banners','🖼️ البنرات'], ['announcements','📢 اللافتات الإعلانية']];
 const HP_BLOCK_TYPES = {
   campaign_hero:'بانر حملة داخل بلوك (قديم)',
-  promotion_cards:'كروت العروض الأفقية',
-  promo_banner:'لافتة عروض إضافية',
+  promotion_cards:'كروت صفحات العروض',
+  promo_banner:'العرض العام (لافتة عروض)',
   product_carousel:'شريط منتجات تختارها',
+  products_popular:'الأكثر طلبًا تلقائيًا',
   products_discounted:'منتجات عليها خصم',
   products_new:'منتجات جديدة',
   product_grid:'شبكة منتجات',
@@ -5366,16 +5438,17 @@ const HP_BLOCK_TYPES = {
 // شرح واضح لكل نوع داخل شاشة الإنشاء. الأوصاف تشرح الوظائف التي يدعمها تطبيق العميل حاليًا.
 const HP_BLOCK_TYPE_HELP = {
   campaign_hero:{icon:'🖼️',about:'نوع قديم داخل البلوكات. البانر الرئيسي المعتمد يتم إنشاؤه من تبويب البنرات.',items:'لا يحتاج إضافة منتجات أو عناصر داخله.',layout:'بانر',where:'استخدم تبويب البنرات للبانر الرئيسي.'},
-  promotion_cards:{icon:'🎟️',about:'مجموعة كروت للعروض أو صفحات الحملات. كل كارت يفتح العرض أو صفحة الحملة المرتبطة به.',items:'أضف عروضًا أو صفحات حملات من قائمة العناصر.',layout:'شبكة أو بطاقات',where:'مناسب لعرض كروت العروض في الصفحة الرئيسية.'},
-  promo_banner:{icon:'📣',about:'لافتة أو أكثر للعروض الإضافية، ويمكن عرض أكثر من لافتة داخل نفس البلوك.',items:'أضف العروض التي تريد الإعلان عنها؛ الضغط على اللافتة يفتح العرض.',layout:'بانر أو شريط',where:'يمكن وضعها في مواضع الصفحة الرئيسية التي يدعمها تطبيق العميل حاليًا.'},
-  product_carousel:{icon:'🍔',about:'شريط أفقي من المنتجات التي تختارها بنفسك، ويمكن للعميل التمرير بينها.',items:'أضف المنتجات يدويًا من قائمة المنتجات.',layout:'شريط أفقي',where:'مناسب لأقسام مثل منتجات قد تعجبك.'},
+  promotion_cards:{icon:'🎟️',about:'مجموعة كروت؛ كل كارت يفتح صفحة حملة محددة. هذا النوع مخصص لبطاقات الصفحات وليس لعرض المنتجات أو تفاصيل الخصم مباشرة.',items:'أضف صفحات الحملات من قائمة العناصر، ويمكن إضافة عرض مرتبط عند الحاجة.',layout:'شبكة أو بطاقات',where:'موضع ثابت: أسفل البانر الرئيسي مباشرة وقبل العرض العام.'},
+  promo_banner:{icon:'📣',about:'هذا هو بلوك العرض العام؛ يعرض لافتة أو أكثر مرتبطة بالعروض، والضغط عليها يفتح العرض.',items:'أضف العروض التي تريد إظهارها في العرض العام.',layout:'بانر أو شريط',where:'موضع ثابت بعد كروت صفحات العروض مباشرة، وقبل البلوكات الإضافية.'},
+  product_carousel:{icon:'🍔',about:'شريط أفقي من المنتجات التي تختارها بنفسك، ويمكن للعميل التمرير بينها.',items:'أضف المنتجات يدويًا من قائمة المنتجات.',layout:'شريط أفقي',where:'مناسب لأقسام المنتجات المختارة.'},
+  products_popular:{icon:'🔥',about:'يعرض المنتجات المعلّمة بالأكثر طلبًا تلقائيًا، أو المنتجات التي تختارها يدويًا.',items:'اترك العناصر فارغة للاختيار التلقائي من علامة الأكثر طلبًا، أو اختر منتجات محددة.',layout:'شريط أفقي أو شبكة أو بطاقات',where:'مناسب لقسم الأكثر طلبًا أو ترشيحات الصفحة الرئيسية.'},
   products_discounted:{icon:'🏷️',about:'يعرض المنتجات التي لديها سعر بيع مخفّض بالفعل مقارنة بالسعر الأصلي.',items:'يمكنك اختيار منتجات محددة؛ وإذا تركت القائمة فارغة يعرض التطبيق المنتجات التي عليها خصم تلقائيًا.',layout:'شريط أفقي أو شبكة',where:'مناسب لقسم عروض وخصومات المنتجات.'},
   products_new:{icon:'✨',about:'قسم مخصص لتقديم المنتجات الجديدة للعملاء.',items:'اختر المنتجات الجديدة يدويًا من قائمة المنتجات. قاعدة البيانات الحالية لا تحتوي على علامة تلقائية للمنتج الجديد.',layout:'شريط أفقي أو شبكة',where:'مناسب لقسم وصل حديثًا أو جديد عندنا.'},
   product_grid:{icon:'▦',about:'مجموعة منتجات تظهر في شبكة، بدل الشريط الأفقي.',items:'أضف المنتجات التي تريد عرضها يدويًا. الخصومات والأسعار الفعلية تظهر من بيانات المنتج؛ أما اختيار المنتجات الجديدة تلقائيًا فيحتاج ربطًا إضافيًا.',layout:'شبكة أو بطاقات',where:'مناسب لقوائم المنتجات داخل الصفحة الرئيسية.'},
   category_grid:{icon:'🗂️',about:'كروت للتصنيفات حتى ينتقل العميل إلى التصنيف عند الضغط عليه.',items:'أضف التصنيفات من القائمة.',layout:'شبكة أو بطاقات',where:'مناسب لتسهيل الوصول لأقسام المنيو.'},
-  text_promo:{icon:'✍️',about:'قسم إعلاني نصي بعنوان كبير ووصف، ويمكن تخصيص ألوانه.',items:'لا يحتاج إضافة منتجات. نص الإعلان يُدار من إعدادات المحتوى المدعومة.',layout:'نصي أو بطاقة',where:'مناسب للرسائل والتنويهات التسويقية.'}
+  text_promo:{icon:'✍️',about:'قسم إعلاني نصي بعنوان ووصف وزر اختياري بوجهة تختارها.',items:'اكتب نص الإعلان وحدد نص الزر ووجهته إذا أردت.',layout:'نصي أو بطاقة',where:'مناسب للرسائل والتنويهات التسويقية.'}
 };
-const HP_LAYOUTS = { text:'نص', grid:'شبكة', cards:'بطاقات', carousel:'شريط أفقي', banner:'بانر' };
+const HP_LAYOUTS = { text:'نص', grid:'شبكة', cards:'بطاقات', carousel:'شريط أفقي', list:'قائمة رأسية', banner:'بانر' };
 const HP_ITEM_TYPES = { product:'منتج', category:'تصنيف', promotion:'عرض أو كوبون', promotion_page:'صفحة حملة (تفتح شاشة العروض)' };
 // أنواع العناصر المسموح بها لكل وظيفة؛ تمنع ربط منتج داخل كارت عرض بالخطأ.
 const HP_BLOCK_ITEM_TYPES = {
@@ -5383,6 +5456,7 @@ const HP_BLOCK_ITEM_TYPES = {
   promotion_cards: ['promotion','promotion_page'],
   promo_banner: ['promotion'],
   product_carousel: ['product'],
+  products_popular: ['product'],
   products_discounted: ['product'],
   products_new: ['product'],
   product_grid: ['product'],
@@ -5391,13 +5465,15 @@ const HP_BLOCK_ITEM_TYPES = {
 };
 const HP_BLOCK_LAYOUTS = {
   campaign_hero: ['banner'], promotion_cards: ['cards','carousel','grid'],
-  promo_banner: ['banner','carousel'], product_carousel: ['carousel'],
-  products_discounted: ['carousel','grid','cards'], products_new: ['carousel','grid','cards'],
-  product_grid: ['grid','cards'], category_grid: ['grid','cards'], text_promo: ['text','cards']
+  promo_banner: ['banner','carousel'], product_carousel: ['carousel','list'],
+  products_popular: ['carousel','grid','cards','list'],
+  products_discounted: ['carousel','grid','cards','list'], products_new: ['carousel','grid','cards','list'],
+  product_grid: ['grid','cards','list'], category_grid: ['grid','cards','list'], text_promo: ['text','cards']
 };
 const HP_BANNER_TARGETS = { url:'رابط خارجي', product:'منتج', category:'تصنيف', promotion:'عرض' };
-const HP_ANN_PLACEMENTS = { top:'أعلى الصفحة الرئيسية', below_hero:'أسفل الواجهة الرئيسية', between_blocks:'بين بلوكات الرئيسية', above_footer:'أعلى الفوتر', cart:'أعلى شاشة السلة', rewards:'أعلى شاشة مكافآتي' };
+const HP_ANN_PLACEMENTS = { below_hero:'الرئيسية — أسفل البانر', below_cards:'الرئيسية — أسفل كروت صفحات العروض', below_general_offer:'الرئيسية — أسفل العرض العام', above_secret_menu:'الرئيسية — أعلى المنيو السري', cart:'السلة — أعلى شاشة السلة', rewards:'مكافآتي — أعلى شاشة مكافآتي', top:'موضع قديم — أعلى الرئيسية', between_blocks:'موضع قديم — بين البلوكات', above_footer:'موضع قديم — أعلى الفوتر' };
 const HP_ANN_TARGETS = { none:'بدون وجهة', category:'تصنيف', promotion:'عرض' };
+const hpBlockPlacement = b => b.block_type === 'promotion_cards' ? 'home_after_hero' : b.block_type === 'promo_banner' ? 'home_after_cards' : ((b.settings || {}).placement || 'home_after_general_offer');
 const HP_FILTERS = [['all','الكل'], ['active','نشط'], ['upcoming','قادم'], ['expired','منتهٍ'], ['inactive','موقوف']];
 
 const hpState = { tab: 'blocks', filter: { blocks: 'all', banners: 'all', announcements: 'all' } };
@@ -5576,13 +5652,18 @@ async function hpRenderBlocks(body, v) {
       .hp-editor-colors{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
       .hp-editor-colors label{min-width:0}
       .hp-editor-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
-      @media(max-width:480px){.hp-editor-grid{grid-template-columns:1fr}.hp-editor-colors{grid-template-columns:1fr}}
+      .hp-option-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 12px}
+      .hp-option-grid label{display:flex;align-items:center;gap:8px;margin:6px 0}
+      .hp-option-grid input[type=checkbox]{width:18px;height:18px;accent-color:var(--pri)}
+      .hp-field-note{display:block;color:var(--ink2);font-size:11px;line-height:1.7;margin-top:4px}
+      @media(max-width:480px){.hp-editor-grid,.hp-option-grid{grid-template-columns:1fr}.hp-editor-colors{grid-template-columns:1fr}}
       @media(max-width:480px){.hp-block-card{padding:11px!important}.hp-block-card__cover{width:56px;height:56px;flex-basis:56px}.hp-block-card__footer{align-items:stretch}.hp-block-card__actions{width:100%}.hp-block-card__actions .btn{flex:1}.hp-block-card__order{width:100%;justify-content:flex-start}}
     `;
     document.head.appendChild(style);
   }
   const [{ rows, counts, itemsBy }, lookups] = await Promise.all([hpLoadBlocks(), hpLoadLookups()]);
-  const ordered = hpByOrder(rows);
+  const blockGroupRank = b => ({home_after_hero:0,home_after_cards:1,home_after_general_offer:2,cart_top:3,rewards_top:4})[hpBlockPlacement(b)] ?? 2;
+  const ordered = hpByOrder(rows).sort((a,b) => blockGroupRank(a) - blockGroupRank(b) || (Number(a.sort_order)||0) - (Number(b.sort_order)||0));
   const visible = hpApplyFilter('blocks', ordered);
   const thumb = (src, size = 48) => src
     ? `<img src="${esc(src)}" alt="" loading="lazy" style="width:${size}px;height:${size}px;object-fit:cover;border-radius:10px;flex-shrink:0;background:var(--bg2)">`
@@ -5591,12 +5672,13 @@ async function hpRenderBlocks(body, v) {
     const found = (lookups[it.item_type] || []).find(x => x.id === it.target_id);
     const img = it.image_override_url || (found && found.image_url) || null;
     const imageSource = it.image_override_url ? 'صورة مخصصة لهذا العنصر' : ({ product:'صورة المنتج من المنيو', promotion:'صورة العرض من إعدادات العرض', promotion_page:'صورة الكارت من صفحة الحملة', category:'لا توجد صورة افتراضية للتصنيف' }[it.item_type] || 'الصورة الافتراضية للعنصر');
-    return { name: found ? found.name_ar : '(غير موجود)', img, imageSource, missing: !found, type: HP_ITEM_TYPES[it.item_type] || it.item_type, active: it.is_active };
+    return { name: found ? (it.title_override_ar || found.name_ar) : '(غير موجود)', img, imageSource, missing: !found, type: HP_ITEM_TYPES[it.item_type] || it.item_type, active: it.is_active };
   };
   const chip = (style, inner) => `<span style="display:inline-flex;align-items:center;gap:6px;padding:2px 8px 2px 2px;border:1px solid var(--line);border-radius:999px;font-size:12px;background:var(--sf);${style}">${inner}</span>`;
   const cardOf = b => {
     const st = hpStatus(b);
-    const pos = ordered.findIndex(x => x.id === b.id);
+    const moveGroup = ordered.filter(x => hpBlockPlacement(x) === hpBlockPlacement(b));
+    const pos = moveGroup.findIndex(x => x.id === b.id);
     const canMove = hpState.filter.blocks === 'all';
     const items = hpByOrder(itemsBy[b.id] || []).map(itemInfo);
     const cover = (b.block_type === 'campaign_hero' ? b.image_url : null) || (items.find(i => i.img) || {}).img || null;
@@ -5630,8 +5712,8 @@ async function hpRenderBlocks(body, v) {
       </div>
       <div class="hp-block-card__footer">
         <div class="hp-block-card__order">
-          <small style="color:var(--ink2)">الترتيب: ${b.sort_order}</small>
-          ${canMove ? `<button class="btn out sm" data-act="up" data-id="${b.id}" ${pos === 0 ? 'disabled' : ''} aria-label="تحريك لأعلى">↑</button><button class="btn out sm" data-act="down" data-id="${b.id}" ${pos === ordered.length - 1 ? 'disabled' : ''} aria-label="تحريك لأسفل">↓</button>` : ''}
+          <small style="color:var(--ink2)">${({home_after_hero:'الرئيسية — أسفل البانر مباشرة',home_after_cards:'الرئيسية — أسفل كروت صفحات العروض',home_after_general_offer:'الرئيسية — أسفل العرض العام · الترتيب: '+b.sort_order,cart_top:'السلة — أعلى شاشة السلة · الترتيب: '+b.sort_order,rewards_top:'مكافآتي — أعلى الشاشة · الترتيب: '+b.sort_order})[hpBlockPlacement(b)] || 'الرئيسية — بعد العرض العام'}</small>
+          ${canMove ? `<button class="btn out sm" data-act="up" data-id="${b.id}" ${pos === 0 ? 'disabled' : ''} aria-label="تحريك لأعلى داخل نفس المجموعة">↑</button><button class="btn out sm" data-act="down" data-id="${b.id}" ${pos === moveGroup.length - 1 ? 'disabled' : ''} aria-label="تحريك لأسفل داخل نفس المجموعة">↓</button>` : ''}
         </div>
         <div class="hp-block-card__actions">
           <button class="btn out sm" data-act="edit" data-id="${b.id}">✏️ تعديل</button>
@@ -5643,7 +5725,7 @@ async function hpRenderBlocks(body, v) {
   };
   body.innerHTML = `
     <div class="hp-block-toolbar">
-      <div><h3 style="margin:0 0 4px;font-size:17px">بلوكات الصفحة الرئيسية</h3><small style="color:var(--ink2)">أنشئ البلوك وحدد عناصره وصورته وألوانه من نافذة واحدة.</small></div>
+      <div><h3 style="margin:0 0 4px;font-size:17px">بلوكات الصفحة الرئيسية</h3><small style="color:var(--ink2)">كروت صفحات الحملات لها موضع ثابت أسفل البانر. باقي البلوكات تأتي بعد العرض العام ويمكن ترتيبها فيما بينها.</small></div>
       <div class="hp-block-toolbar__actions"><button class="btn pri" id="hp-block-add">+ إنشاء بلوك</button><button class="btn out" id="hp-pages-btn">📄 صفحات الحملات</button></div>
     </div>
     <div class="set-card" style="margin:10px 0;padding:12px;line-height:1.9">
@@ -5654,7 +5736,7 @@ async function hpRenderBlocks(body, v) {
         <li><b>العرض أو الكوبون:</b> «صورة العرض» من إعدادات العروض؛ تظهر مع العرض عند استخدامه في كروت أو قوائم العروض.</li>
         <li><b>المنتج:</b> صورته تأتي تلقائيًا من صورة المنتج في المنيو.</li>
         <li><b>صورة مخصصة داخل البلوك:</b> ترفعها من عنصر البلوك نفسه لتكون بديلة عن صورته الافتراضية فقط.</li>
-        <li><b>صورة الإعلان:</b> من تبويب «الإعلانات النصية» وتخص موضع الإعلان المحدد، وليست بانر الرئيسية.</li>
+        <li><b>صورة اللافتة الإعلانية:</b> من تبويب «اللافتات الإعلانية» وتخص موضع الإعلان المحدد، وليست بانر الرئيسية.</li>
       </ul>
     </div>
     ${hpFilterBar('blocks')}
@@ -5675,7 +5757,7 @@ async function hpRenderBlocks(body, v) {
     try {
       if (act === 'up' || act === 'down') {
         btn.disabled = true;
-        await hpMove('homepage_blocks', rows, id, act === 'up' ? -1 : 1);
+        await hpMove('homepage_blocks', ordered.filter(x => hpBlockPlacement(x) === hpBlockPlacement(row)), id, act === 'up' ? -1 : 1);
         toast('تم تحديث الترتيب في قاعدة البيانات', 'ok');
       } else if (act === 'toggle') {
         btn.disabled = true;
@@ -5701,8 +5783,13 @@ async function hpBlockEditor(row, ordered, lookups, v) {
   const isNew = !row;
   const r = row || { block_type: 'product_grid', layout_type: 'grid', is_active: true, title_ar: '', subtitle_ar: '', starts_at: null, ends_at: null, background_color: '', text_color: '', accent_color: '', image_url: null };
   const curBadge = (r.settings || {}).badge_id || '';
-  const others = ordered.filter(x => !row || x.id !== row.id);
-  const prevBlock = row ? others.filter(x => x.sort_order <= row.sort_order).pop() : null;
+  const blockSettings = (r.settings && typeof r.settings === 'object') ? r.settings : {};
+  const blockContent = (r.content && typeof r.content === 'object') ? r.content : {};
+  const ctaTarget = blockContent.target || (r.target_url ? 'url' : 'none');
+  const fixedPlacement = r.block_type === 'promotion_cards' ? 'home_after_hero' : r.block_type === 'promo_banner' ? 'home_after_cards' : null;
+  const initialPlacement = fixedPlacement || blockSettings.placement || 'home_after_general_offer';
+  const others = ordered.filter(x => (!row || x.id !== row.id) && hpBlockPlacement(x) === initialPlacement);
+  const prevBlock = row ? others.filter(x => Number(x.sort_order) <= Number(row.sort_order)).pop() : null;
   const defaultPos = isNew ? 'last' : (prevBlock ? 'after:' + prevBlock.id : 'first');
   const badgeOpts = `<option value="">بدون شارة</option>` + (lookups.badge || []).map(x => `<option value="${x.id}" ${x.id === curBadge ? 'selected' : ''}>${esc((x.icon ? x.icon + ' ' : '') + x.label_ar)}${x.is_active ? '' : ' (موقوفة)'}</option>`).join('');
   const posOpts = `<option value="first" ${defaultPos === 'first' ? 'selected' : ''}>أول الصفحة</option>`
@@ -5724,7 +5811,9 @@ async function hpBlockEditor(row, ordered, lookups, v) {
       <button type="button" class="btn out sm" data-sel-act="up" data-idx="${i}" ${i===0?'disabled':''}>↑</button>
       <button type="button" class="btn out sm" data-sel-act="down" data-idx="${i}" ${i===selected.length-1?'disabled':''}>↓</button>
       <button type="button" class="btn out sm dng" data-sel-act="remove" data-idx="${i}">إزالة</button></div>
-      ${it.item_type !== 'product' ? `<label style="display:block;margin-top:10px">عنوان الكارت (اختياري — اتركه فارغًا لعرض الصورة فقط)</label><input id="hb_item_title_${i}" maxlength="120" value="${esc(it.title_override_ar || '')}" placeholder="بدون عنوان؛ صورة فقط">` : ''}
+      <label style="display:block;margin-top:10px">عنوان العنصر (اختياري — اتركه فارغًا لاستخدام الاسم الأصلي)</label><input id="hb_item_title_${i}" maxlength="120" value="${esc(it.title_override_ar || '')}" placeholder="استخدم الاسم الأصلي">
+      <label style="display:block;margin-top:8px">وصف مختصر للكارت (اختياري)</label><input id="hb_item_subtitle_${i}" maxlength="180" value="${esc(it.subtitle_override_ar || '')}" placeholder="وصف يظهر أسفل العنوان">
+      <label class="toggle" style="margin:8px 0"><span>إظهار هذا العنصر للعميل</span><input type="checkbox" id="hb_item_active_${i}" ${it.is_active === false ? '' : 'checked'}></label>
       <div style="margin-top:8px">${imgField(imageId,'صورة مخصصة لهذا الكارت (اختياري)','homepage-block-items',it.image_override_url || '')}<small style="display:block;color:var(--ink2);line-height:1.7">${imageHelp} إذا رفعت صورة هنا فستكون هي المستخدمة بدل الصورة الافتراضية.</small></div>
     </div>`;
   }).join('') : '<div class="empty" style="padding:12px">لم تضف عناصر لهذا البلوك بعد.</div>';
@@ -5747,18 +5836,110 @@ async function hpBlockEditor(row, ordered, lookups, v) {
       <div id="hb_items_note" style="margin-top:8px;color:var(--ink2);font-size:12px"></div>
       <div id="hb_selected_list" style="margin-top:10px">${renderSelected()}</div>
     </section>
-    <section class="hp-editor-section"><h3>٣. مكان وموعد الظهور</h3>
-      <label>مكان البلوك في ترتيب الصفحة الرئيسية</label><select id="hb_pos">${posOpts}</select>
+    <section class="hp-editor-section"><h3>٣. إعدادات المحتوى والأزرار</h3>
+      <div id="hb_text_content_wrap"><label>نص الإعلان</label><textarea id="hb_text_content" maxlength="1200" placeholder="اكتب النص الذي سيظهر داخل البلوك">${esc(blockContent.text_ar || blockContent.text || '')}</textarea><small class="hp-field-note">يُستخدم في نوع «بلوك نص إعلاني» فقط.</small></div>
+      <div class="hp-option-grid" style="margin-top:10px">
+        <label><input type="checkbox" id="hb_show_desc" ${blockSettings.show_description === false ? '' : 'checked'}> إظهار الوصف</label>
+        <label id="hb_show_price_wrap"><input type="checkbox" id="hb_show_price" ${blockSettings.show_price === false ? '' : 'checked'}> إظهار السعر</label>
+        <label><input type="checkbox" id="hb_show_badge" ${blockSettings.show_badge === false ? '' : 'checked'}> إظهار الشارة</label>
+        <label><input type="checkbox" id="hb_full_width" ${blockSettings.full_width === true ? 'checked' : ''}> عرض البلوك بعرض الشاشة</label>
+      </div>
+      <div class="hp-editor-grid" style="margin-top:8px">
+        <div><label>عدد أعمدة الشبكة</label><select id="hb_columns"><option value="">تلقائي حسب الشاشة</option>${[1,2,3,4].map(n=>`<option value="${n}" ${Number(blockSettings.columns)===n?'selected':''}>${n} أعمدة</option>`).join('')}</select></div>
+        <div><label>استدارة الحواف</label><input id="hb_radius" type="number" min="0" max="32" value="${esc(blockSettings.border_radius ?? '')}" placeholder="افتراضي"></div>
+        <div><label>محاذاة النص</label><select id="hb_text_align"><option value="">افتراضي</option><option value="right" ${['right','start'].includes(blockSettings.text_align || blockSettings.align)?'selected':''}>يمين</option><option value="center" ${((blockSettings.text_align || blockSettings.align)==='center')?'selected':''}>منتصف</option><option value="left" ${['left','end'].includes(blockSettings.text_align || blockSettings.align)?'selected':''}>يسار</option></select></div>
+        <div><label>المسافة حول البلوك</label><select id="hb_padding"><option value="small" ${r.padding_size==='small'?'selected':''}>صغيرة</option><option value="medium" ${!r.padding_size || r.padding_size==='medium'?'selected':''}>متوسطة</option><option value="large" ${r.padding_size==='large'?'selected':''}>كبيرة</option></select></div>
+        <div id="hb_banner_height_wrap"><label>ارتفاع البانر (بكسل)</label><input id="hb_banner_height" type="number" min="120" max="600" value="${esc(blockSettings.min_height ?? 200)}"></div>
+        <div id="hb_image_position_wrap"><label>موضع الصورة على الكمبيوتر</label><select id="hb_image_position">${[['center','منتصف'],['top','أعلى'],['bottom','أسفل'],['left','يسار'],['right','يمين']].map(([k,l])=>`<option value="${k}" ${(blockSettings.image_position||'center')===k?'selected':''}>${l}</option>`).join('')}</select></div>
+        <div id="hb_mobile_image_position_wrap"><label>موضع الصورة على الموبايل</label><select id="hb_mobile_image_position">${[['center','منتصف'],['top','أعلى'],['bottom','أسفل'],['left','يسار'],['right','يمين']].map(([k,l])=>`<option value="${k}" ${(blockSettings.mobile_image_position||'center')===k?'selected':''}>${l}</option>`).join('')}</select></div>
+      </div>
+      <div id="hb_button_settings" style="margin-top:14px;padding:12px;border:1px dashed var(--line);border-radius:10px">
+        <label class="toggle" style="margin:0 0 8px"><span>إظهار زر داخل البلوك</span><input type="checkbox" id="hb_cta_enabled" ${blockSettings.show_cta === true || (r.block_type==='text_promo' && blockSettings.show_cta !== false) ? 'checked' : ''}></label>
+        <div class="hp-editor-grid">
+          <div><label>نص الزر</label><input id="hb_cta_label" maxlength="40" value="${esc(blockContent.button_text_ar || blockContent.cta_text_ar || blockContent.cta_text || '')}" placeholder="مثال: اكتشف المزيد"></div>
+          <div><label>وجهة الزر</label><select id="hb_cta_target"><option value="none" ${ctaTarget==='none'?'selected':''}>بدون وجهة</option><option value="menu" ${ctaTarget==='menu'?'selected':''}>فتح المنيو</option><option value="url" ${ctaTarget==='url'?'selected':''}>رابط خارجي</option><option value="product" ${ctaTarget==='product'?'selected':''}>منتج</option><option value="category" ${ctaTarget==='category'?'selected':''}>تصنيف</option><option value="promotion" ${ctaTarget==='promotion'?'selected':''}>عرض</option></select></div>
+          <div id="hb_cta_target_id_wrap"><label>العنصر المستهدف</label><select id="hb_cta_target_id"></select></div>
+          <div id="hb_cta_url_wrap"><label>الرابط الخارجي</label><input id="hb_cta_url" dir="ltr" type="url" value="${esc(blockContent.target_url || r.target_url || '')}" placeholder="https://example.com"></div>
+          <div><label>محاذاة الزر</label><select id="hb_cta_align"><option value="start" ${blockSettings.button_align==='start'?'selected':''}>يمين</option><option value="center" ${blockSettings.button_align==='center'?'selected':''}>منتصف</option><option value="end" ${blockSettings.button_align==='end'?'selected':''}>يسار</option></select></div>
+          <div id="hb_cta_position_wrap"><label>موضع الزر</label><select id="hb_cta_position"><option value="inside" ${blockSettings.button_position!=='below'?'selected':''}>داخل البانر / الكارت</option><option value="below" ${blockSettings.button_position==='below'?'selected':''}>أسفل البلوك</option></select></div>
+        </div>
+        <small class="hp-field-note">الزر لا يظهر إلا إذا فعّلته وحددت وجهة صحيحة. زر المنتج السريع (+) يظل مستقلًا عن هذا الزر.</small>
+      </div>
+      <div id="hb_banner_visual_wrap" style="margin-top:12px"><label class="toggle"><span>تعتيم الصورة خلف النص</span><input type="checkbox" id="hb_image_overlay" ${blockSettings.image_overlay === false ? '' : 'checked'}></label><label>قوة التعتيم (%)</label><input id="hb_overlay_opacity" type="number" min="0" max="100" value="${esc(blockSettings.overlay_opacity ?? 50)}"></div>
+    </section>
+    <section class="hp-editor-section"><h3>٤. مكان وموعد الظهور</h3>
+      <div id="hb_placement_wrap"><label>الشاشة التي يظهر فيها البلوك</label><select id="hb_placement"><option value="home_after_general_offer" ${initialPlacement==='home_after_general_offer'?'selected':''}>الرئيسية — أسفل العرض العام</option><option value="cart_top" ${initialPlacement==='cart_top'?'selected':''}>السلة — أعلى شاشة السلة</option><option value="rewards_top" ${initialPlacement==='rewards_top'?'selected':''}>مكافآتي — أعلى الشاشة</option></select></div>
+      <div id="hb_fixed_placement_note" class="set-card" style="padding:10px;margin:8px 0;line-height:1.8;display:none"></div>
+      <div id="hb_home_order_wrap"><label>ترتيب البلوك داخل المكان</label><select id="hb_pos">${posOpts}</select></div>
+      <small id="hb_pos_help" style="display:block;color:var(--ink2);line-height:1.8;margin-top:6px">اختَر الشاشة أولًا، ثم رتّب البلوك بين البلوكات الموجودة في الشاشة نفسها.</small>
       <div class="hp-editor-grid"><div><label>بداية الظهور</label><input id="hb_start" type="datetime-local" value="${hpToLocal(r.starts_at)}"></div><div><label>نهاية الظهور</label><input id="hb_end" type="datetime-local" value="${hpToLocal(r.ends_at)}"></div></div>
     </section>
-    <section class="hp-editor-section"><h3>٤. ألوان وتصميم البلوك</h3><p>الألوان بصيغة HEX مثل #FFFFFF.</p>
+    <section class="hp-editor-section"><h3>٥. ألوان وتصميم البلوك</h3><p>الألوان بصيغة HEX مثل #FFFFFF.</p>
       <div class="hp-editor-colors"><div><label>الخلفية</label><input id="hb_bg" dir="ltr" placeholder="#FFFFFF" value="${esc(r.background_color||'')}"></div><div><label>لون النص</label><input id="hb_fg" dir="ltr" placeholder="#222222" value="${esc(r.text_color||'')}"></div><div><label>لون التمييز</label><input id="hb_ac" dir="ltr" placeholder="#D9401F" value="${esc(r.accent_color||'')}"></div></div>
     </section>
-    <section class="hp-editor-section"><h3>٥. حالة البلوك</h3><label class="toggle" style="margin:0"><span>إظهار البلوك للعملاء</span><input type="checkbox" id="hb_active" ${r.is_active?'checked':''}></label></section>
+    <section class="hp-editor-section"><h3>٦. حالة البلوك</h3><label class="toggle" style="margin:0"><span>إظهار البلوك للعملاء</span><input type="checkbox" id="hb_active" ${r.is_active?'checked':''}></label></section>
     <div class="hp-editor-actions"><button class="btn pri big" id="hb_save">💾 حفظ البلوك ومحتواه</button><button class="btn out big" onclick="closeModal()">إلغاء</button></div>`);
 
+  const getPlacementOthers = placement => ordered.filter(x => (!row || x.id !== row.id) && hpBlockPlacement(x) === placement);
+  const rebuildPlacementOrder = (placement, resetToLast = false) => {
+    const group = getPlacementOthers(placement).sort((a,b)=>(Number(a.sort_order)||0)-(Number(b.sort_order)||0));
+    const previous = row && !resetToLast ? group.filter(x=>Number(x.sort_order)<=Number(row.sort_order)).pop() : null;
+    const chosen = resetToLast ? 'last' : (previous ? 'after:'+previous.id : (isNew ? 'last' : 'first'));
+    $('hb_pos').innerHTML = `<option value="first">أول بلوك في المكان</option>` + group.map(x=>`<option value="after:${x.id}">بعد: ${esc(x.title_ar || HP_BLOCK_TYPES[x.block_type] || 'بلوك بدون عنوان')}</option>`).join('') + '<option value="last">آخر بلوك في المكان</option>';
+    $('hb_pos').value = chosen;
+    $('hb_home_order_wrap').style.display = ['cart_top','rewards_top','home_after_hero','home_after_cards'].includes(placement) ? 'none' : '';
+  };
+  const fillCtaTargets = () => {
+    const type = $('hb_cta_target').value;
+    const lookupKey = ({ product:'product', category:'category', promotion:'promotion' })[type];
+    const wrap = $('hb_cta_target_id_wrap');
+    const urlWrap = $('hb_cta_url_wrap');
+    wrap.style.display = lookupKey ? '' : 'none';
+    urlWrap.style.display = type === 'url' ? '' : 'none';
+    if (!lookupKey) { $('hb_cta_target_id').innerHTML = ''; return; }
+    const list = lookups[lookupKey] || [];
+    const current = String(blockContent.target_id || '');
+    $('hb_cta_target_id').innerHTML = '<option value="">اختر الوجهة</option>' + list.map(x=>`<option value="${x.id}" ${String(x.id)===current?'selected':''}>${esc(x.name_ar)}</option>`).join('');
+  };
+  const updateTypeSpecificControls = () => {
+    const type = $('hb_type').value;
+    $('hb_text_content_wrap').style.display = type === 'text_promo' ? '' : 'none';
+    $('hb_show_price_wrap').style.display = ['product_carousel','products_popular','products_discounted','products_new','product_grid'].includes(type) ? '' : 'none';
+    $('hb_banner_height_wrap').style.display = ['campaign_hero','promo_banner'].includes(type) ? '' : 'none';
+    $('hb_banner_visual_wrap').style.display = ['campaign_hero','promo_banner'].includes(type) ? '' : 'none';
+    $('hb_image_position_wrap').style.display = ['campaign_hero','promo_banner'].includes(type) ? '' : 'none';
+    $('hb_mobile_image_position_wrap').style.display = ['campaign_hero','promo_banner'].includes(type) ? '' : 'none';
+    $('hb_cta_position_wrap').style.display = '';
+    const perItemCtaType = ['campaign_hero','promo_banner','promotion_cards','category_grid'].includes(type);
+    const ctaPos = $('hb_cta_position');
+    const currentCtaPos = ctaPos.value;
+    ctaPos.innerHTML = perItemCtaType
+      ? '<option value="inside">داخل البانر / الكارت</option><option value="below">أسفل البلوك</option>'
+      : '<option value="above">قبل المحتوى</option><option value="below">بعد المحتوى</option>';
+    ctaPos.value = [...ctaPos.options].some(o=>o.value===currentCtaPos) ? currentCtaPos : 'below';
+    const fixed = type === 'promotion_cards' ? 'home_after_hero' : type === 'promo_banner' ? 'home_after_cards' : null;
+    $('hb_placement_wrap').style.display = fixed ? 'none' : '';
+    $('hb_fixed_placement_note').style.display = fixed ? '' : 'none';
+    if (fixed) $('hb_fixed_placement_note').textContent = fixed === 'home_after_hero' ? 'موضع ثابت: الرئيسية — أسفل البانر الرئيسي مباشرة.' : 'موضع ثابت: الرئيسية — أسفل كروت صفحات العروض مباشرة.';
+    if (!fixed && !['home_after_general_offer','cart_top','rewards_top'].includes($('hb_placement').value)) $('hb_placement').value = 'home_after_general_offer';
+    rebuildPlacementOrder(fixed || $('hb_placement').value, !row);
+  };
   const updateBlockTypeHelp = () => {
     const info = HP_BLOCK_TYPE_HELP[$('hb_type').value];
+    const fixedGroupType = ['promotion_cards','promo_banner'].includes($('hb_type').value);
+    const isPageCards = $('hb_type').value === 'promotion_cards';
+    const isGeneralOffer = $('hb_type').value === 'promo_banner';
+    const pos = $('hb_pos');
+    const posHelp = $('hb_pos_help');
+    if (pos) {
+      pos.disabled = fixedGroupType;
+      if (fixedGroupType) pos.value = 'first';
+    }
+    if (posHelp) posHelp.textContent = isPageCards
+      ? 'موضع ثابت: أسفل البانر مباشرة، وقبل العرض العام.'
+      : isGeneralOffer
+        ? 'موضع ثابت: بعد كروت صفحات العروض مباشرة، وهو قسم العرض العام.'
+        : 'هذا البلوك يظهر بعد العرض العام. اختر ترتيبه بين البلوكات الإضافية فقط.';
     const imageWrap = $('hb_block_image_wrap');
     if (imageWrap) imageWrap.style.display = $('hb_type').value === 'campaign_hero' ? '' : 'none';
     const box = $('hb_type_help');
@@ -5788,9 +5969,13 @@ async function hpBlockEditor(row, ordered, lookups, v) {
   updateBlockTypeHelp();
   fillLayouts();
   fillItemTypes();
-  $('hb_type').onchange = () => { updateBlockTypeHelp(); fillLayouts(); fillItemTypes(); };
+  fillCtaTargets();
+  updateTypeSpecificControls();
+  $('hb_type').onchange = () => { updateBlockTypeHelp(); fillLayouts(); fillItemTypes(); if ($('hb_type').value === 'text_promo' && blockSettings.show_cta === undefined) $('hb_cta_enabled').checked = true; updateTypeSpecificControls(); };
   $('hb_item_type').onchange = fillTargets;
-  const syncSelectedImageValues = () => selected.forEach((it, i) => { const field = $(`hb_item_img_${i}`); if (field) it.image_override_url = field.value.trim() || null; const titleField = $(`hb_item_title_${i}`); if (titleField) it.title_override_ar = titleField.value.trim() || null; });
+  $('hb_cta_target').onchange = fillCtaTargets;
+  $('hb_placement').onchange = () => rebuildPlacementOrder($('hb_placement').value, true);
+  const syncSelectedImageValues = () => selected.forEach((it, i) => { const field = $(`hb_item_img_${i}`); if (field) it.image_override_url = field.value.trim() || null; const titleField = $(`hb_item_title_${i}`); if (titleField) it.title_override_ar = titleField.value.trim() || null; const subField = $(`hb_item_subtitle_${i}`); if (subField) it.subtitle_override_ar = subField.value.trim() || null; const activeField = $(`hb_item_active_${i}`); if (activeField) it.is_active = activeField.checked; });
   $('hb_add_item').onclick = () => {
     syncSelectedImageValues();
     const type = $('hb_item_type').value, target = $('hb_item_target').value;
@@ -5809,6 +5994,7 @@ async function hpBlockEditor(row, ordered, lookups, v) {
   };
 
   $('hb_save').onclick = async () => {
+    syncSelectedImageValues();
     const btn = $('hb_save');
     const start = hpFromLocal($('hb_start').value), end = hpFromLocal($('hb_end').value);
     if (start === 'INVALID' || end === 'INVALID') return toast('تاريخ غير صالح', 'err');
@@ -5819,17 +6005,70 @@ async function hpBlockEditor(row, ordered, lookups, v) {
     if (image && !hpIsHttps(image)) return toast('صورة البلوك يجب أن تكون HTTPS', 'err');
     const allowedItems = HP_BLOCK_ITEM_TYPES[$('hb_type').value] || [];
     if (selected.some(it => !allowedItems.includes(it.item_type))) return toast('يوجد عنصر من نوع لا يناسب نوع البلوك. أزل العنصر غير المناسب أو أعد نوع البلوك.', 'err');
+    const chosenTarget = $('hb_cta_target').value;
+    const chosenTargetId = $('hb_cta_target_id').value || null;
+    const chosenTargetUrl = $('hb_cta_url').value.trim();
+    if ($('hb_cta_enabled').checked && !String($('hb_cta_label').value||'').trim()) return toast('اكتب نص الزر أولًا', 'err');
+    const ctaUsesEachItemTarget = ['promo_banner','promotion_cards','category_grid'].includes($('hb_type').value) && $('hb_cta_position').value === 'inside';
+    if ($('hb_cta_enabled').checked && !ctaUsesEachItemTarget && chosenTarget === 'none') return toast('اختر وجهة للزر حتى يعمل عند الضغط', 'err');
+    if ($('hb_cta_enabled').checked && !ctaUsesEachItemTarget && ['product','category','promotion'].includes(chosenTarget) && !chosenTargetId) return toast('اختر العنصر الذي سيفتحه الزر', 'err');
+    if ($('hb_cta_enabled').checked && !ctaUsesEachItemTarget && chosenTarget === 'url' && !hpIsHttps(chosenTargetUrl)) return toast('أدخل رابطًا صحيحًا يبدأ بـ HTTPS', 'err');
+    const content = { ...blockContent,
+      text_ar: $('hb_text_content').value.trim(),
+      button_text_ar: $('hb_cta_label').value.trim(),
+      target: chosenTarget,
+      target_id: ['product','category','promotion'].includes(chosenTarget) ? chosenTargetId : null,
+      target_url: chosenTarget === 'url' ? chosenTargetUrl : null
+    };
     const payload = { block_type:$('hb_type').value, layout_type:$('hb_layout').value,
       title_ar:$('hb_title').value.trim()||null, subtitle_ar:$('hb_sub').value.trim()||null,
-      image_url:($('hb_type').value === 'campaign_hero' ? (image||null) : (r.image_url||null)), starts_at:start, ends_at:end, background_color:bg||null,
+      image_url:($('hb_type').value === 'campaign_hero' ? (image||null) : (r.image_url||null)),
+      target_url: chosenTarget === 'url' ? chosenTargetUrl : null,
+      content, starts_at:start, ends_at:end, background_color:bg||null,
       text_color:fg||null, accent_color:ac||null, is_active:$('hb_active').checked };
     const pos = $('hb_pos').value;
-    const ref = pos.startsWith('after:') ? others.find(x=>x.id===pos.slice(6)) : null;
-    const refIdx = ref ? others.indexOf(ref) : -1, nextBlock = refIdx>=0 ? others[refIdx+1] : null;
-    if (pos==='first') payload.sort_order = others.length ? others[0].sort_order-5 : 10;
-    else if (pos==='last') payload.sort_order = others.length ? others[others.length-1].sort_order+10 : 10;
-    else if (ref) payload.sort_order = nextBlock ? ref.sort_order+1 : ref.sort_order+10;
+    const selectedType = $('hb_type').value;
+    const selectedPlacement = selectedType === 'promotion_cards' ? 'home_after_hero' : selectedType === 'promo_banner' ? 'home_after_cards' : $('hb_placement').value;
+    const selectedGroup = selectedType === 'promotion_cards' ? 0 : selectedType === 'promo_banner' ? 1 : 2;
+    const isFixedGroup = selectedGroup !== 2;
+    const groupRows = ordered.filter(x => hpBlockPlacement(x) === selectedPlacement && (!row || x.id !== row.id));
+    const regularRows = groupRows.slice();
+    const activeOthers = getPlacementOthers(selectedPlacement);
+    const ref = pos.startsWith('after:') ? activeOthers.find(x=>x.id===pos.slice(6)) : null;
+    if (isFixedGroup) {
+      payload.sort_order = row && row.block_type === selectedType
+        ? Number(row.sort_order) || 10
+        : (groupRows.length ? Math.max(...groupRows.map(x => Number(x.sort_order)||0)) + 10 : 10);
+    } else {
+      const regularOthers = regularRows.sort((a,b)=>(a.sort_order||0)-(b.sort_order||0));
+      if (pos==='first') payload.sort_order = regularOthers.length ? regularOthers[0].sort_order-5 : 10;
+      else if (pos==='last') payload.sort_order = regularOthers.length ? regularOthers[regularOthers.length-1].sort_order+10 : 10;
+      else if (ref) {
+        const regularIdx = regularOthers.findIndex(x=>x.id===ref.id);
+        const nextRegularBlock = regularOthers[regularIdx+1];
+        payload.sort_order = nextRegularBlock ? ref.sort_order+1 : ref.sort_order+10;
+      }
+    }
     const settings = { ...((row && row.settings)||{}) };
+    settings.placement = selectedPlacement;
+    settings.show_description = $('hb_show_desc').checked;
+    settings.show_price = $('hb_show_price').checked;
+    settings.show_badge = $('hb_show_badge').checked;
+    settings.full_width = $('hb_full_width').checked;
+    settings.show_cta = $('hb_cta_enabled').checked;
+    settings.button_align = $('hb_cta_align').value;
+    settings.button_position = $('hb_cta_position').value;
+    settings.image_overlay = $('hb_image_overlay').checked;
+    settings.overlay_opacity = Math.min(100, Math.max(0, Number($('hb_overlay_opacity').value)||0));
+    settings.min_height = Math.min(600, Math.max(120, Number($('hb_banner_height').value)||200));
+    const columns = $('hb_columns').value;
+    if (columns) settings.columns = Number(columns); else delete settings.columns;
+    const radius = $('hb_radius').value;
+    if (radius !== '') settings.border_radius = Math.min(32, Math.max(0, Number(radius)||0)); else delete settings.border_radius;
+    settings.text_align = $('hb_text_align').value || null;
+    settings.image_position = $('hb_image_position').value;
+    settings.mobile_image_position = $('hb_mobile_image_position').value;
+    payload.padding_size = $('hb_padding').value;
     const chosenBadge = (lookups.badge||[]).find(x=>x.id===$('hb_badge').value);
     if (chosenBadge) { settings.badge_id=chosenBadge.id; settings.badge_text=((chosenBadge.icon?chosenBadge.icon+' ':'')+chosenBadge.label_ar).slice(0,40); }
     else { delete settings.badge_id; delete settings.badge_text; }
@@ -5861,10 +6100,10 @@ async function hpBlockEditor(row, ordered, lookups, v) {
       for (let i=0;i<selected.length;i++) {
         const it=selected[i], imageOverride = $(`hb_item_img_${i}`)?.value?.trim() || null;
         const titleOverride = $(`hb_item_title_${i}`)?.value?.trim() || null;
-        const patch={sort_order:(i+1)*10,is_active:true,image_override_url:imageOverride,title_override_ar:titleOverride};
+        const patch={sort_order:(i+1)*10,is_active:it.is_active !== false,image_override_url:imageOverride,title_override_ar:titleOverride,subtitle_override_ar:it.subtitle_override_ar || null};
         if (it._existing) { await hpUpdate('homepage_block_items',it.id,patch); }
         else {
-          const ins=await sb.from('homepage_block_items').insert({block_id:blockId,item_type:it.item_type,target_id:it.target_id,sort_order:(i+1)*10,is_active:true,image_override_url:imageOverride,title_override_ar:titleOverride}).select('id').single();
+          const ins=await sb.from('homepage_block_items').insert({block_id:blockId,item_type:it.item_type,target_id:it.target_id,sort_order:(i+1)*10,is_active:it.is_active !== false,image_override_url:imageOverride,title_override_ar:titleOverride,subtitle_override_ar:it.subtitle_override_ar || null}).select('id').single();
           if (ins.error) throw ins.error;
           if (!ins.data?.id) throw new Error('تعذر تأكيد إضافة أحد عناصر البلوك');
         }
@@ -6108,7 +6347,7 @@ function hpBannerEditor(row, ordered, lookups, v) {
   };
 }
 
-/* ═══════════ الإعلانات النصية ═══════════ */
+/* ═══════════ اللافتات الإعلانية ═══════════ */
 async function hpRenderAnnouncements(body, v) {
   const [rows, lookups] = await Promise.all([hpLoadTable('homepage_announcements'), hpLoadLookups()]);
   const ordered = hpByOrder(rows);
@@ -6166,7 +6405,7 @@ async function hpRenderAnnouncements(body, v) {
 
 function hpAnnouncementEditor(row, ordered, lookups, v) {
   const isNew = !row;
-  const r = row || { title_ar: '', message_ar: '', placement: 'top', background_color: '#111827', text_color: '#ffffff', accent_color: '', icon: '', target_type: 'none', target_id: null, target_url: '', is_dismissible: true, is_active: true, starts_at: null, ends_at: null };
+  const r = row || { title_ar: '', message_ar: '', placement: 'below_hero', background_color: '#111827', text_color: '#ffffff', accent_color: '', icon: '', target_type: 'none', target_id: null, target_url: '', is_dismissible: true, is_active: true, starts_at: null, ends_at: null };
   openModal(`<h2>${isNew ? 'إعلان جديد' : 'تعديل الإعلان'} <button class="close" onclick="closeModal()" aria-label="إغلاق">✕</button></h2>
     <label>العنوان (اختياري)</label><input id="han_title" maxlength="80" value="${esc(r.title_ar || '')}">
     <label>نص الإعلان *</label><textarea id="han_msg" maxlength="300">${esc(r.message_ar || '')}</textarea>
@@ -6175,8 +6414,9 @@ function hpAnnouncementEditor(row, ordered, lookups, v) {
     <input id="han_img" dir="ltr" placeholder="https://..." value="${esc(r.image_url || '')}">
     <input type="file" id="han_file" accept="image/png,image/jpeg,image/webp" style="margin-top:6px;max-width:100%">
     <div id="han_up" style="font-size:12px;color:var(--ink2);margin-top:4px">الإعلان اللي فيه صورة بيظهر في شريط الصفحة الرئيسية.</div>
-    <label>الموضع *</label>
-    <select id="han_pl">${Object.entries(HP_ANN_PLACEMENTS).map(([k, l]) => `<option value="${k}" ${r.placement === k ? 'selected' : ''}>${l}</option>`).join('')}</select>
+    <label>مكان ظهور اللافتة *</label>
+    <small style="display:block;color:var(--ink2);line-height:1.8;margin:-2px 0 7px">اختر الشاشة ثم موضع اللافتة. ترتيب الرئيسية واضح وثابت: البانر ← كروت صفحات العروض ← العرض العام ← البلوكات الإضافية. مواضع (قديم) تظهر فقط للحفاظ على الإعلانات المحفوظة سابقًا.</small>
+    <select id="han_pl">${Object.entries(HP_ANN_PLACEMENTS).filter(([k]) => !['top','between_blocks','above_footer'].includes(k) || r.placement === k).map(([k, l]) => `<option value="${k}" ${r.placement === k ? 'selected' : ''}>${l}</option>`).join('')}</select>
     <label>نوع الوجهة</label>
     <select id="han_ttype">${Object.entries(HP_ANN_TARGETS).map(([k, l]) => `<option value="${k}" ${r.target_type === k ? 'selected' : ''}>${l}</option>`).join('')}</select>
     <div id="han_tid_wrap"><label>الهدف</label><select id="han_tid"></select></div>
@@ -6903,7 +7143,7 @@ document.addEventListener('visibilitychange', () => {
 </script>
 
 <!-- رسالة بديلة عند تعطيل JavaScript في المتصفح -->
-<noscript><div style="padding:24px;text-align:center;font-family:sans-serif">يجب تفعيل JavaScript لاستخدام لوحة تحكم Sheep &amp; Burger.</div></noscript>
+<noscript><div style="padding:24px;text-align:center;font-family:sans-serif">يجب تفعيل JavaScript لاستخدام لوحة الإدارة.</div></noscript>
 <script>
 /*
   MODULE 16 · LEGACY SERVICE WORKER CLEANUP
